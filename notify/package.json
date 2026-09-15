@@ -1,0 +1,14 @@
+{
+  "name": "balance-notify",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Scheduled push notification sender for Balance, run by GitHub Actions cron.",
+  "type": "commonjs",
+  "main": "send-notifications.js",
+  "scripts": {
+    "send": "node send-notifications.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.6.0"
+  }
+}

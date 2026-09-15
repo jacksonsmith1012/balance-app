@@ -1,0 +1,7 @@
+.DS_Store
+node_modules/
+notify/node_modules/
+notify/package-lock.json
+*.log
+.firebase/
+firebase-debug.log
