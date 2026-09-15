@@ -2,6 +2,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/fireba
 import {
   getAuth,
   GoogleAuthProvider,
+  signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
   signOut as fbSignOut,
@@ -44,6 +45,7 @@ export const db = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
 
 export {
+  signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
   fbSignOut,

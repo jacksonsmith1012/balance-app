@@ -1,5 +1,5 @@
-import { state, saveUserDoc } from "./store.js";
-import { auth, googleProvider, signInWithRedirect } from "./firebase.js";
+import { state, saveUserDoc, loadUserDoc, createUserDoc } from "./store.js";
+import { auth, googleProvider, signInWithPopup, signInWithRedirect } from "./firebase.js";
 import { SLIDER_CATALOG, MIN_SLIDERS, MAX_SLIDERS, getSliderMeta } from "./constants.js";
 import { createVerticalSlider } from "./slider-component.js";
 import { setupPushNotifications, promptAddToHomeScreen } from "./notifications.js";
@@ -64,7 +64,7 @@ function renderWelcome(el, { next }) {
   el.querySelector("#startBtn").addEventListener("click", next);
 }
 
-function renderSignIn(el, { back }) {
+function renderSignIn(el, { next, back }) {
   el.innerHTML = `
     <p class="eyebrow">Step 2 of ${TOTAL_STEPS}</p>
     <h1 class="onb-title">Sign in to continue</h1>
@@ -83,9 +83,36 @@ function renderSignIn(el, { back }) {
     const errorEl = el.querySelector("#signInError");
     errorEl.textContent = "";
     try {
-      // Redirect (not popup): reliable inside an installed/standalone PWA on iOS,
-      // where window.open-based popups are frequently blocked or lose app context.
-      await signInWithRedirect(auth, googleProvider);
+      // Popup first: avoids the cross-domain redirect bounce through the
+      // firebaseapp.com authDomain, which Safari's tracking prevention often
+      // breaks (auth succeeds on Google's side but the app never sees it,
+      // looping back to sign-in). Redirect is only a fallback for when the
+      // popup itself is blocked.
+      let result;
+      try {
+        result = await signInWithPopup(auth, googleProvider);
+      } catch (popupErr) {
+        if (
+          popupErr.code === "auth/popup-blocked" ||
+          popupErr.code === "auth/operation-not-supported-in-this-environment" ||
+          popupErr.code === "auth/cancelled-popup-request"
+        ) {
+          await signInWithRedirect(auth, googleProvider);
+          return;
+        }
+        throw popupErr;
+      }
+
+      state.user = result.user;
+      let userDoc = await loadUserDoc(result.user.uid);
+      if (!userDoc) {
+        userDoc = await createUserDoc(result.user.uid, {
+          name: result.user.displayName || "",
+          email: result.user.email || "",
+        });
+      }
+      state.onboardingDraft.name = state.onboardingDraft.name || userDoc.name || result.user.displayName || "";
+      next();
     } catch (err) {
       console.error(err);
       errorEl.textContent = "Sign-in failed. Please try again.";
