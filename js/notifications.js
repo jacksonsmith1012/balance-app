@@ -4,7 +4,8 @@ import { customSheet } from "./modal.js";
 
 // Set this to your Firebase Cloud Messaging "Web Push certificate" key
 // (Firebase Console > Project Settings > Cloud Messaging > Web configuration).
-export const VAPID_KEY = "";
+export const VAPID_KEY =
+  "BIrRmRiK9XPpAICm1QPPCYaTQq_IQi8-sfYkoPz4IsuIPsTLfWXmoLAljI84Ft-rtBsoR29mE8ovsUps-adDtag";
 
 let deferredInstallPrompt = null;
 
