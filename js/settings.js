@@ -1,6 +1,13 @@
 import { state, saveUserDoc, resetAllData } from "./store.js";
 import { fbSignOut, auth } from "./firebase.js";
-import { SLIDER_CATALOG, MIN_SLIDERS, MAX_SLIDERS, getSliderMeta } from "./constants.js";
+import {
+  SLIDER_CATALOG,
+  MIN_SLIDERS,
+  MAX_SLIDERS,
+  getSliderMeta,
+  nextCustomSliderColor,
+  slugifySliderId,
+} from "./constants.js";
 import { confirmModal, customSheet } from "./modal.js";
 import { showMainScreen } from "./main-screen.js";
 import { promptAddToHomeScreen } from "./notifications.js";
@@ -227,25 +234,26 @@ function openAddSlider(screen, container) {
   }
   const existingIds = new Set(sliders.map((s) => s.id));
   const available = SLIDER_CATALOG.filter((c) => !existingIds.has(c.id));
-  if (!available.length) {
-    confirmModal({ title: "All added", body: "You've already added every available category.", confirmLabel: "OK" });
-    return;
-  }
 
   customSheet(
     `
       <div class="modal-title">Add a slider</div>
-      <div class="card-grid">
-        ${available
-          .map(
-            (c) => `
-          <div class="category-card" data-id="${c.id}" style="--card-color:${c.color}">
-            <div class="category-icon">${c.icon}</div>
-            <div class="category-label">${c.label}</div>
-          </div>`
-          )
-          .join("")}
-      </div>
+      ${
+        available.length
+          ? `<div class="card-grid">
+              ${available
+                .map(
+                  (c) => `
+                <div class="category-card" data-id="${c.id}" style="--card-color:${c.color}">
+                  <div class="category-icon">${c.icon}</div>
+                  <div class="category-label">${c.label}</div>
+                </div>`
+                )
+                .join("")}
+            </div>`
+          : `<div class="modal-body">You've added every built-in category — create your own below.</div>`
+      }
+      <button class="btn btn-secondary btn-block" id="customSliderBtn" style="margin-top:14px;">+ Create your own</button>
     `,
     (sheet, close) => {
       sheet.querySelectorAll(".category-card").forEach((card) => {
@@ -265,6 +273,50 @@ function openAddSlider(screen, container) {
           close();
           showSettingsScreen(container);
         });
+      });
+
+      sheet.querySelector("#customSliderBtn").addEventListener("click", () => {
+        close();
+        openCreateCustomSlider(container, sliders);
+      });
+    }
+  );
+}
+
+function openCreateCustomSlider(container, sliders) {
+  customSheet(
+    `
+      <div class="modal-title">Create a slider</div>
+      <input class="text-input" id="customLabelInput" placeholder="e.g. Friends, Finances, Creativity" maxlength="24" />
+      <div class="modal-body" style="margin-top:10px;">Tracked as satisfaction, 0–100%, just like Love or Work.</div>
+      <div class="modal-actions" style="margin-top:16px;">
+        <button class="btn btn-secondary" id="cancelBtn">Cancel</button>
+        <button class="btn btn-primary" id="saveBtn" disabled>Add</button>
+      </div>
+    `,
+    (sheet, close) => {
+      const input = sheet.querySelector("#customLabelInput");
+      const saveBtn = sheet.querySelector("#saveBtn");
+      input.addEventListener("input", () => {
+        saveBtn.disabled = !input.value.trim();
+      });
+      sheet.querySelector("#cancelBtn").addEventListener("click", close);
+      saveBtn.addEventListener("click", async () => {
+        const label = input.value.trim();
+        if (!label) return;
+        const newSlider = {
+          id: slugifySliderId(label, sliders),
+          label,
+          color: nextCustomSliderColor(sliders),
+          metricType: "satisfaction",
+          satisfiedValue: null,
+          unsatisfiedValue: null,
+          currentValue: 50,
+          order: sliders.length,
+        };
+        await saveUserDoc(state.user.uid, { sliders: [...sliders, newSlider] });
+        close();
+        showSettingsScreen(container);
       });
     }
   );

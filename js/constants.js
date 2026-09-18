@@ -1,4 +1,5 @@
 export const SLIDER_CATALOG = [
+  { id: "faith", label: "Faith", color: "#D4A373", icon: "📖", metricType: "satisfaction" },
   { id: "sleep", label: "Sleep", color: "#7C8CF8", icon: "🌙", metricType: "hours" },
   { id: "love", label: "Love", color: "#F87171", icon: "❤️", metricType: "satisfaction" },
   { id: "hobbies", label: "Hobbies", color: "#FBBF24", icon: "🎨", metricType: "satisfaction" },
@@ -27,4 +28,38 @@ export const OVERRIDE_RAMP = [
 
 export function getSliderMeta(id) {
   return SLIDER_CATALOG.find((s) => s.id === id);
+}
+
+// Colors offered to custom (user-created) sliders, distinct from the built-in catalog.
+export const CUSTOM_SLIDER_COLORS = [
+  "#38BDF8",
+  "#F472B6",
+  "#4ADE80",
+  "#FCD34D",
+  "#C084FC",
+  "#FB7185",
+  "#2DD4BF",
+  "#F59E0B",
+];
+
+export function nextCustomSliderColor(existingSliders) {
+  const usedColors = new Set(existingSliders.map((s) => s.color));
+  return (
+    CUSTOM_SLIDER_COLORS.find((c) => !usedColors.has(c)) ||
+    CUSTOM_SLIDER_COLORS[existingSliders.length % CUSTOM_SLIDER_COLORS.length]
+  );
+}
+
+export function slugifySliderId(label, existingSliders) {
+  const base =
+    label
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "") || "custom";
+  const existingIds = new Set(existingSliders.map((s) => s.id));
+  if (!existingIds.has(base)) return base;
+  let i = 2;
+  while (existingIds.has(`${base}-${i}`)) i++;
+  return `${base}-${i}`;
 }

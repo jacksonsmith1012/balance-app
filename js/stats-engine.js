@@ -4,6 +4,7 @@ import {
   weightedAverage,
   blendedConstraintTotal,
   blendedConstraintPerSlider,
+  fillMissingWithPeerAverage,
   sumValues,
 } from "./math.js";
 
@@ -28,16 +29,23 @@ export async function recomputeStats(uid) {
     monthlyAvg[id] = weightedAverage(entriesForSlider(monthly, id));
   }
 
-  const dailyAvgTotal = daily.length ? sumValues(dailyAvg) : null;
-  const weeklyAvgTotal = weekly.length ? sumValues(weeklyAvg) : null;
-  const monthlyAvgTotal = monthly.length ? sumValues(monthlyAvg) : null;
+  // A slider with no history yet for a cadence (e.g. one just added) is treated
+  // as already being at the user's average for that cadence, not as a 0 — so
+  // adding a new slider doesn't drag down totals it was never part of.
+  const filledDaily = fillMissingWithPeerAverage(dailyAvg);
+  const filledWeekly = fillMissingWithPeerAverage(weeklyAvg);
+  const filledMonthly = fillMissingWithPeerAverage(monthlyAvg);
+
+  const dailyAvgTotal = daily.length ? sumValues(filledDaily) : null;
+  const weeklyAvgTotal = weekly.length ? sumValues(filledWeekly) : null;
+  const monthlyAvgTotal = monthly.length ? sumValues(filledMonthly) : null;
 
   const blendedConstraintPerSliderMap = {};
   for (const id of sliderIds) {
     blendedConstraintPerSliderMap[id] = blendedConstraintPerSlider(
-      dailyAvg[id],
-      weeklyAvg[id],
-      monthlyAvg[id]
+      filledDaily[id],
+      filledWeekly[id],
+      filledMonthly[id]
     );
   }
 

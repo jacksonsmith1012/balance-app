@@ -9,7 +9,7 @@ import {
   overrideWeightRamp,
   clamp,
 } from "./math.js";
-import { startOfDay, isSameDay } from "./utils.js";
+import { checkInDayStart, isSameCheckInDay } from "./utils.js";
 import { fetchSubmissions } from "./store.js";
 import { showStatsScreen } from "./stats.js";
 import { showSettingsScreen } from "./settings.js";
@@ -27,7 +27,7 @@ export function showMainScreen(container) {
   localValues = {};
   for (const s of sliders) localValues[s.id] = clamp(s.currentValue ?? 50);
 
-  const alreadySubmittedToday = isSameDay(userDoc.lastDailySubmission);
+  const alreadySubmittedToday = isSameCheckInDay(userDoc.lastDailySubmission);
 
   const screen = document.createElement("div");
   screen.className = "screen";
@@ -152,7 +152,7 @@ async function handleSubmit(submitBtn, screen, sliders) {
   try {
     await addSubmission(uid, {
       type: "daily",
-      periodStart: startOfDay(),
+      periodStart: checkInDayStart(),
       values,
       isOverride: wasOverride,
       overrideWeight,

@@ -41,6 +41,28 @@ export function isSameDay(a, b = new Date()) {
   );
 }
 
+// The daily check-in "day" starts at 3 AM local time rather than midnight, so
+// staying up past midnight doesn't roll the check-in over to a new day.
+export const DAY_RESET_HOUR = 3;
+
+function shiftForDayReset(date) {
+  return new Date(date.getTime() - DAY_RESET_HOUR * 60 * 60 * 1000);
+}
+
+/** Wall-clock start (3 AM) of the current check-in day for a given moment. */
+export function checkInDayStart(date = new Date()) {
+  const shifted = shiftForDayReset(date);
+  const dayStart = startOfDay(shifted);
+  return new Date(dayStart.getTime() + DAY_RESET_HOUR * 60 * 60 * 1000);
+}
+
+/** Like isSameDay, but treats times before 3 AM as still belonging to the prior day. */
+export function isSameCheckInDay(a, b = new Date()) {
+  const da = toDate(a);
+  if (!da) return false;
+  return shiftForDayReset(da).toDateString() === shiftForDayReset(b).toDateString();
+}
+
 export function isSameWeek(a, b = new Date()) {
   const da = toDate(a);
   if (!da) return false;

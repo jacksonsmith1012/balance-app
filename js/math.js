@@ -120,6 +120,23 @@ export function sumValues(valuesMap) {
   return Object.values(valuesMap).reduce((a, b) => a + b, 0);
 }
 
+/**
+ * Fills missing (null) per-slider averages with the mean of the sliders that DO
+ * have data for this cadence. This treats a slider with no history yet (e.g. one
+ * just added) as already being at the user's overall average, rather than as a
+ * 0 that would drag the total down or an arbitrary flat default. Falls back to
+ * DEFAULT_CADENCE_VALUE only when no slider has any data at all for the cadence.
+ */
+export function fillMissingWithPeerAverage(avgMap) {
+  const known = Object.values(avgMap).filter((v) => v != null);
+  const fallback = known.length ? known.reduce((a, b) => a + b, 0) / known.length : DEFAULT_CADENCE_VALUE;
+  const filled = {};
+  for (const [id, v] of Object.entries(avgMap)) {
+    filled[id] = v ?? fallback;
+  }
+  return filled;
+}
+
 export function trendArrow(current, previous) {
   if (previous == null || current == null) return "flat";
   const diff = current - previous;
