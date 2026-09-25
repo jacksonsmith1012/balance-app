@@ -11,6 +11,7 @@ import {
 import { confirmModal, customSheet } from "./modal.js";
 import { showMainScreen } from "./main-screen.js";
 import { promptAddToHomeScreen } from "./notifications.js";
+import { THEMES, applyTheme, currentThemeId, themedColor } from "./themes.js";
 
 export function showSettingsScreen(container) {
   const userDoc = state.userDoc;
@@ -39,6 +40,20 @@ export function showSettingsScreen(container) {
       </div>
     </div>
 
+    <div class="section-title">Appearance</div>
+    <div class="theme-grid" id="themeGrid">
+      ${Object.values(THEMES)
+        .map(
+          (t) => `
+        <button class="theme-card ${t.id === currentThemeId() ? "selected" : ""}" data-theme-id="${t.id}">
+          <div class="theme-swatches">${t.swatch.map((c) => `<span style="background:${c}"></span>`).join("")}</div>
+          <div class="theme-name">${t.name}</div>
+        </button>`
+        )
+        .join("")}
+    </div>
+    <div class="theme-desc" id="themeDesc">${THEMES[currentThemeId()].description}</div>
+
     <div class="section-title">Your sliders (${sliders.length}/${MAX_SLIDERS})</div>
     <div id="sliderList"></div>
     <button class="btn btn-secondary btn-block" id="addSliderBtn" style="margin-top:8px;">+ Add a slider</button>
@@ -62,6 +77,21 @@ export function showSettingsScreen(container) {
   screen.querySelector("#backBtn").addEventListener("click", () => showMainScreen(container));
 
   renderSliderList(screen, sliders, container);
+
+  screen.querySelector("#themeGrid").addEventListener("click", async (e) => {
+    const card = e.target.closest(".theme-card");
+    if (!card) return;
+    const id = card.dataset.themeId;
+    applyTheme(id);
+    screen.querySelectorAll(".theme-card").forEach((c) => c.classList.toggle("selected", c === card));
+    screen.querySelector("#themeDesc").textContent = THEMES[id].description;
+    renderSliderList(screen, sliders, container);
+    try {
+      await saveUserDoc(state.user.uid, { theme: id });
+    } catch (err) {
+      console.error("Couldn't save theme", err);
+    }
+  });
 
   screen.querySelector("#editNameRow").addEventListener("click", () => openEditName(screen));
   screen.querySelector("#notifTimeRow").addEventListener("click", () => openEditNotifTime(screen));
@@ -97,7 +127,7 @@ function renderSliderList(screen, sliders, container) {
   for (const s of sliders) {
     const row = document.createElement("div");
     row.className = "slider-manage-row";
-    row.style.setProperty("--swatch-color", s.color);
+    row.style.setProperty("--swatch-color", themedColor(s));
     row.innerHTML = `
       <span class="swatch"></span>
       <span class="name">${s.label}</span>

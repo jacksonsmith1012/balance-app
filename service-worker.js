@@ -1,4 +1,4 @@
-const CACHE_NAME = "balance-shell-v1";
+const CACHE_NAME = "balance-shell-v2";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -8,6 +8,7 @@ const APP_SHELL = [
   "./js/constants.js",
   "./js/math.js",
   "./js/utils.js",
+  "./js/themes.js",
   "./js/store.js",
   "./js/stats-engine.js",
   "./js/slider-component.js",
@@ -37,22 +38,21 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+// Network-first so updates show up immediately; the cache is the offline fallback.
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  if (new URL(event.request.url).origin !== self.location.origin) return;
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const network = fetch(event.request)
-        .then((response) => {
-          if (response && response.status === 200 && response.type === "basic") {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          }
-          return response;
-        })
-        .catch(() => cached);
-      return cached || network;
-    })
+    fetch(event.request)
+      .then((response) => {
+        if (response && response.status === 200) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
 

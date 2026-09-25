@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Shippori+Mincho:wght@500;700&display=swap");
 
 :root {
   --bg: #1e2a3a;
@@ -12,6 +12,11 @@
   --green: #34d399;
   --yellow: #fbbf24;
   --red: #f87171;
+  --on-accent: #101728;
+  --overlay: rgba(16, 23, 40, 0.85);
+  --scrim: rgba(10, 14, 22, 0.6);
+  --page-bg: radial-gradient(120% 120% at 50% -10%, #24374d 0%, #1e2a3a 55%, #16202c 100%);
+  --font-display: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 
   --sleep: #7c8cf8;
   --love: #f87171;
@@ -36,13 +41,13 @@ html,
 body {
   height: 100%;
   min-height: 100dvh;
-  background: var(--bg);
+  background-color: var(--bg);
 }
 
 body {
   margin: 0;
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  background: radial-gradient(120% 120% at 50% -10%, #24374d 0%, var(--bg) 55%, #16202c 100%);
+  background: var(--page-bg);
   color: var(--text);
   overflow: hidden;
   -webkit-tap-highlight-color: transparent;
@@ -51,7 +56,7 @@ body {
 #app {
   position: fixed;
   inset: 0;
-  background: var(--bg);
+  background: var(--page-bg);
   display: flex;
   flex-direction: column;
   padding-top: var(--safe-top);
@@ -79,7 +84,7 @@ button {
 
 .btn-primary {
   background: var(--accent);
-  color: #101728;
+  color: var(--on-accent);
 }
 
 .btn-primary:disabled {
@@ -367,7 +372,7 @@ input.text-input:focus {
   background: rgba(251, 191, 36, 0.12);
   border: 1px solid rgba(251, 191, 36, 0.3);
   border-radius: var(--radius-sm);
-  color: #fbbf24;
+  color: var(--yellow);
   font-size: 13px;
   text-align: center;
 }
@@ -458,6 +463,7 @@ input.text-input:focus {
 }
 
 .slider-label {
+  min-height: 32px;
   margin-top: 8px;
   font-size: 12px;
   font-weight: 600;
@@ -480,7 +486,7 @@ input.text-input:focus {
   border-radius: var(--radius-lg);
   border: none;
   background: var(--accent);
-  color: #101728;
+  color: var(--on-accent);
   font-size: 17px;
   font-weight: 700;
   cursor: pointer;
@@ -533,7 +539,7 @@ input.text-input:focus {
 .phase3-banner {
   position: fixed;
   inset: 0;
-  background: rgba(16, 23, 40, 0.85);
+  background: var(--overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -557,6 +563,13 @@ input.text-input:focus {
 .stats-screen {
   padding: 16px 16px calc(24px + var(--safe-bottom));
   overflow-y: auto;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.stats-screen > *,
+.settings-screen > * {
+  flex-shrink: 0;
 }
 
 .stats-header {
@@ -693,7 +706,7 @@ input.text-input:focus {
 
 .cadence-toggle button.active {
   background: var(--accent);
-  color: #101728;
+  color: var(--on-accent);
   border-color: var(--accent);
 }
 
@@ -709,6 +722,8 @@ input.text-input:focus {
 .settings-screen {
   padding: 16px 16px calc(24px + var(--safe-bottom));
   overflow-y: auto;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
 }
 
 .settings-section {
@@ -779,7 +794,7 @@ input.text-input:focus {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(10, 14, 22, 0.6);
+  background: var(--scrim);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -844,4 +859,222 @@ input.text-input:focus {
     border-left: 1px solid var(--border);
     border-right: 1px solid var(--border);
   }
+}
+
+
+/* ---------- Loading skeletons & empty states ---------- */
+
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-elevated) 0%, var(--bg-elevated-2) 50%, var(--bg-elevated) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.stats-empty {
+  color: var(--text-faint);
+  font-size: 13px;
+  padding: 20px;
+  text-align: center;
+}
+
+.submit-hint {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-top: 8px;
+}
+
+/* ---------- Theme picker ---------- */
+
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.theme-card {
+  background: var(--bg-elevated);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 8px;
+  text-align: center;
+  cursor: pointer;
+  color: var(--text);
+  font: inherit;
+}
+
+.theme-card.selected {
+  border-color: var(--accent);
+}
+
+.theme-card .theme-name {
+  font-size: 13px;
+  font-weight: 700;
+  margin-top: 8px;
+}
+
+.theme-swatches {
+  display: flex;
+  justify-content: center;
+}
+
+.theme-swatches span {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  margin-left: -5px;
+}
+
+.theme-swatches span:first-child {
+  margin-left: 0;
+}
+
+.theme-desc {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin: 0 2px 12px;
+  min-height: 16px;
+}
+
+/* ================= ZEN THEME ================= */
+
+[data-theme="zen"] {
+  color-scheme: light;
+  --bg: #f4f0e6;
+  --bg-elevated: #fffdf7;
+  --bg-elevated-2: #ece6d8;
+  --text: #23211e;
+  --text-dim: #5c574e;
+  --text-faint: #8d8676;
+  --border: rgba(35, 33, 30, 0.13);
+  --accent: #2b2926;
+  --on-accent: #f4f0e6;
+  --green: #5f7f4a;
+  --yellow: #a5720f;
+  --red: #b5523b;
+  --overlay: rgba(244, 240, 230, 0.92);
+  --scrim: rgba(35, 33, 30, 0.35);
+  --page-bg: repeating-linear-gradient(90deg, #f7f3e9 0, #f7f3e9 46px, #ebe5d6 46px, #ebe5d6 48px);
+  --font-display: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", Georgia, serif;
+}
+
+[data-theme="zen"] h1.onb-title,
+[data-theme="zen"] .stats-title,
+[data-theme="zen"] .app-title,
+[data-theme="zen"] .modal-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+[data-theme="zen"] .logo-mark {
+  background: #1a1a1a;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 6px #f4f0e6, inset 0 0 0 8px #b5523b;
+}
+
+[data-theme="zen"] .slider-track-area {
+  padding-top: 18px;
+  padding-bottom: 18px;
+}
+
+[data-theme="zen"] .slider-shell {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+}
+
+[data-theme="zen"] .slider-shell::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  transform: translateX(-50%);
+  background: #161616;
+  border-radius: 2px;
+}
+
+[data-theme="zen"] .slider-fill {
+  display: none;
+}
+
+[data-theme="zen"] .slider-thumb {
+  width: 48px;
+  height: 24px;
+  border-radius: 5px;
+  background:
+    repeating-linear-gradient(0deg, rgba(88, 52, 18, 0.16) 0, rgba(88, 52, 18, 0.16) 1px, transparent 1px, transparent 4px),
+    linear-gradient(180deg, #dcb887 0%, #c29761 48%, #a8763f 100%);
+  box-shadow: 0 2px 5px rgba(40, 24, 8, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 -1px 0 rgba(60, 35, 12, 0.35);
+}
+
+[data-theme="zen"] .slider-thumb::after {
+  content: "";
+  position: absolute;
+  left: 9%;
+  right: 9%;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+  background: rgba(50, 28, 8, 0.6);
+  border-radius: 1px;
+}
+
+/* ================= ROSE GARDEN THEME ================= */
+
+[data-theme="rose"] {
+  color-scheme: light;
+  --bg: #fbeaf1;
+  --bg-elevated: #fff8fb;
+  --bg-elevated-2: #f6dce8;
+  --text: #4a2c3f;
+  --text-dim: #7d5a70;
+  --text-faint: #a98a9c;
+  --border: rgba(122, 60, 100, 0.15);
+  --accent: #c0578a;
+  --on-accent: #ffffff;
+  --green: #4f9a7b;
+  --yellow: #a5720f;
+  --red: #d2566f;
+  --overlay: rgba(251, 234, 241, 0.92);
+  --scrim: rgba(74, 44, 63, 0.35);
+  --page-bg: radial-gradient(110% 80% at 15% -10%, #ffd9e7 0%, transparent 55%),
+    radial-gradient(100% 80% at 100% 105%, #e6d6fa 0%, transparent 55%), #fbeaf1;
+}
+
+[data-theme="rose"] .slider-shell {
+  background: rgba(192, 87, 138, 0.1);
+  border-color: rgba(192, 87, 138, 0.2);
+}
+
+[data-theme="rose"] .slider-thumb {
+  width: 30px;
+  height: 8px;
+  border-radius: 4px;
+  background: #ffffff;
+  box-shadow: 0 1px 5px rgba(120, 50, 90, 0.4);
+}
+
+[data-theme="rose"] .logo-mark {
+  background: linear-gradient(135deg, #f2a0b8, #b98bd9);
+}
+
+[data-theme="rose"] .google-btn {
+  border: 1px solid var(--border);
 }

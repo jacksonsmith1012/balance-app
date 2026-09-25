@@ -3,6 +3,7 @@ import { state, loadUserDoc, createUserDoc } from "./store.js";
 import { renderOnboarding } from "./onboarding.js";
 import { showMainScreen } from "./main-screen.js";
 import { showGlobalError } from "./utils.js";
+import { applyTheme, isValidTheme } from "./themes.js";
 
 window.addEventListener("unhandledrejection", (event) => {
   const code = event.reason?.code || "";
@@ -37,6 +38,8 @@ async function route() {
       email: user.email || "",
     });
   }
+
+  if (isValidTheme(userDoc.theme)) applyTheme(userDoc.theme);
 
   if (!userDoc.setupComplete) {
     state.onboardingDraft.name = state.onboardingDraft.name || userDoc?.name || user.displayName || "";

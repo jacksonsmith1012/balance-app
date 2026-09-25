@@ -71,6 +71,7 @@ export async function addSubmission(uid, submission) {
     overrideWeight: submission.overrideWeight ?? 1.0,
   };
   await addDoc(ref, payload);
+  invalidateSubmissionsCache();
 
   const updates = {};
   if (submission.type === "daily") {
@@ -94,12 +95,31 @@ export async function addSubmission(uid, submission) {
   await saveUserDoc(uid, updates);
 }
 
-export async function fetchSubmissions(uid, type, max = 200) {
+let submissionsCache = null; // { uid, promise } — newest first
+
+export function invalidateSubmissionsCache() {
+  submissionsCache = null;
+}
+
+/** Fetches recent submissions once; concurrent callers share the same request until a write invalidates it. */
+function loadAllSubmissions(uid) {
+  if (submissionsCache && submissionsCache.uid === uid) return submissionsCache.promise;
   const ref = collection(db, "users", uid, "submissions");
-  const q = query(ref, orderBy("submittedAt", "desc"), limit(max));
-  const snap = await getDocs(q);
-  const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  return type ? all.filter((s) => s.type === type) : all;
+  const q = query(ref, orderBy("submittedAt", "desc"), limit(300));
+  const promise = getDocs(q)
+    .then((snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+    .catch((err) => {
+      if (submissionsCache && submissionsCache.promise === promise) submissionsCache = null;
+      throw err;
+    });
+  submissionsCache = { uid, promise };
+  return promise;
+}
+
+export async function fetchSubmissions(uid, type, max = 200) {
+  const all = await loadAllSubmissions(uid);
+  const filtered = type ? all.filter((s) => s.type === type) : all;
+  return filtered.slice(0, max);
 }
 
 export async function saveStats(uid, stats) {
@@ -125,6 +145,7 @@ export async function deleteAllSubmissions(uid) {
 
 export async function resetAllData(uid) {
   await deleteAllSubmissions(uid);
+  invalidateSubmissionsCache();
   const resetSliders = (state.userDoc.sliders || []).map((s) => ({ ...s, currentValue: 50 }));
   await saveUserDoc(uid, {
     dailySubmissionCount: 0,

@@ -2,6 +2,7 @@ import { state, fetchSubmissions, loadStats } from "./store.js";
 import { statusColor, trendArrow } from "./math.js";
 import { STATUS_THRESHOLDS } from "./constants.js";
 import { showMainScreen } from "./main-screen.js";
+import { themedColor } from "./themes.js";
 
 let currentCadence = "daily";
 
@@ -16,16 +17,16 @@ export async function showStatsScreen(container) {
       <button class="icon-btn" id="backBtn" aria-label="Back">←</button>
       <div class="stats-title">Your Balance</div>
     </div>
-    <div class="overview-scroll" id="overviewScroll"></div>
+    <div class="overview-scroll" id="overviewScroll">${skeletonCards(sliders.length)}</div>
     <div class="section-title">Balance View</div>
-    <div class="balance-view" id="balanceView"></div>
+    <div class="balance-view" id="balanceView">${skeletonLine()}${skeletonLine()}</div>
     <div class="section-title">Trends</div>
     <div class="cadence-toggle" id="cadenceToggle">
       <button data-cadence="daily" class="active">Daily</button>
       <button data-cadence="weekly">Weekly</button>
       <button data-cadence="monthly">Monthly</button>
     </div>
-    <div class="trend-chart" id="trendChart"></div>
+    <div class="trend-chart" id="trendChart">${skeletonLine(120)}</div>
   `;
 
   container.innerHTML = "";
@@ -33,21 +34,41 @@ export async function showStatsScreen(container) {
 
   screen.querySelector("#backBtn").addEventListener("click", () => showMainScreen(container));
 
-  const stats = (await loadStats(state.user.uid)) || {};
-
-  renderOverview(screen, sliders, stats);
-  renderBalanceView(screen, sliders, stats);
-
-  currentCadence = "daily";
-  await renderTrendChart(screen, sliders, currentCadence);
-
-  screen.querySelector("#cadenceToggle").addEventListener("click", async (e) => {
+  let submissions = null;
+  screen.querySelector("#cadenceToggle").addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-cadence]");
     if (!btn) return;
     currentCadence = btn.dataset.cadence;
     screen.querySelectorAll("#cadenceToggle button").forEach((b) => b.classList.toggle("active", b === btn));
-    await renderTrendChart(screen, sliders, currentCadence);
+    if (submissions) renderTrendChart(screen, sliders, submissions, currentCadence);
   });
+  currentCadence = "daily";
+
+  try {
+    // One parallel round trip; submissions are cached in the store afterwards.
+    const uid = state.user.uid;
+    const [stats, all] = await Promise.all([loadStats(uid), fetchSubmissions(uid, null, 300)]);
+    if (!screen.isConnected) return;
+    submissions = all;
+    renderOverview(screen, sliders, stats || {});
+    renderBalanceView(screen, sliders, stats || {});
+    renderTrendChart(screen, sliders, submissions, currentCadence);
+  } catch (err) {
+    console.error("Stats load failed", err);
+    if (!screen.isConnected) return;
+    const msg = `<div class="stats-empty">Couldn't load your stats. Check your connection and reopen this screen.</div>`;
+    screen.querySelector("#overviewScroll").innerHTML = "";
+    screen.querySelector("#balanceView").innerHTML = msg;
+    screen.querySelector("#trendChart").innerHTML = msg;
+  }
+}
+
+function skeletonCards(n) {
+  return Array.from({ length: Math.max(n, 3) }, () => `<div class="overview-card skeleton" style="height:98px"></div>`).join("");
+}
+
+function skeletonLine(h = 18) {
+  return `<div class="skeleton" style="height:${h}px;border-radius:8px;margin-bottom:12px"></div>`;
 }
 
 function renderOverview(screen, sliders, stats) {
@@ -90,7 +111,7 @@ function renderBalanceView(screen, sliders, stats) {
     row.innerHTML = `
       <div class="balance-bar-label">${s.label}</div>
       <div class="balance-bar-track">
-        <div class="balance-bar-fill" style="width:${clampPct(currentVal)}%;background:${s.color}"></div>
+        <div class="balance-bar-fill" style="width:${clampPct(currentVal)}%;background:${themedColor(s)}"></div>
       </div>
       <div class="balance-bar-value">${Math.round(currentVal)}%</div>
     `;
@@ -108,15 +129,12 @@ function clampPct(v) {
   return Math.min(100, Math.max(0, v));
 }
 
-async function renderTrendChart(screen, sliders, cadence) {
+function renderTrendChart(screen, sliders, allSubmissions, cadence) {
   const chart = screen.querySelector("#trendChart");
-  chart.innerHTML = `<div style="color:var(--text-faint);font-size:13px;padding:20px;text-align:center;">Loading…</div>`;
-
-  const submissions = await fetchSubmissions(state.user.uid, cadence, 60);
-  const ordered = submissions.slice().reverse(); // oldest first
+  const ordered = allSubmissions.filter((s) => s.type === cadence).slice(0, 60).reverse(); // oldest first
 
   if (ordered.length < 2) {
-    chart.innerHTML = `<div style="color:var(--text-faint);font-size:13px;padding:20px;text-align:center;">Not enough ${cadence} data yet.</div>`;
+    chart.innerHTML = `<div class="stats-empty">Not enough ${cadence} data yet.</div>`;
     return;
   }
 
@@ -138,7 +156,7 @@ async function renderTrendChart(screen, sliders, cadence) {
     });
     const validPoints = points.filter(Boolean);
     if (validPoints.length < 2) continue;
-    svg += `<polyline fill="none" stroke="${s.color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points="${validPoints.join(" ")}" />`;
+    svg += `<polyline fill="none" stroke="${themedColor(s)}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points="${validPoints.join(" ")}" />`;
   }
   svg += `</svg>`;
 
@@ -146,7 +164,7 @@ async function renderTrendChart(screen, sliders, cadence) {
     .map(
       (s) =>
         `<span style="display:inline-flex;align-items:center;gap:5px;margin-right:12px;font-size:11px;color:var(--text-dim);">
-          <span style="width:8px;height:8px;border-radius:50%;background:${s.color};display:inline-block;"></span>${s.label}
+          <span style="width:8px;height:8px;border-radius:50%;background:${themedColor(s)};display:inline-block;"></span>${s.label}
         </span>`
     )
     .join("");

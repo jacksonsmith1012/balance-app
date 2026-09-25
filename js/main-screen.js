@@ -13,10 +13,46 @@ import { checkInDayStart, isSameCheckInDay } from "./utils.js";
 import { fetchSubmissions } from "./store.js";
 import { showStatsScreen } from "./stats.js";
 import { showSettingsScreen } from "./settings.js";
+import { themedColor } from "./themes.js";
+import { DAY_RESET_HOUR } from "./utils.js";
 
 let overrideActive = false;
 let sliderInstances = {};
 let localValues = {};
+let persistTimer = null;
+let persistDirty = false;
+
+// Slider positions are saved to the account shortly after each move, so they
+// reload where you left them even when today's check-in is already logged.
+function persistPositionsNow() {
+  clearTimeout(persistTimer);
+  persistTimer = null;
+  if (!persistDirty || !state.user || !state.userDoc) return;
+  persistDirty = false;
+  saveUserDoc(state.user.uid, { sliders: state.userDoc.sliders }).catch((err) => {
+    persistDirty = true;
+    console.error("Couldn't save slider positions", err);
+  });
+}
+
+function schedulePersist() {
+  persistDirty = true;
+  clearTimeout(persistTimer);
+  persistTimer = setTimeout(persistPositionsNow, 500);
+}
+
+function rememberPositions(values) {
+  state.userDoc.sliders = (state.userDoc.sliders || []).map((s) =>
+    Object.prototype.hasOwnProperty.call(values, s.id)
+      ? { ...s, currentValue: Math.round(values[s.id] * 10) / 10 }
+      : s
+  );
+}
+
+window.addEventListener("pagehide", persistPositionsNow);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") persistPositionsNow();
+});
 
 export function showMainScreen(container) {
   overrideActive = false;
@@ -54,6 +90,11 @@ export function showMainScreen(container) {
       <button class="submit-btn" id="submitBtn" ${alreadySubmittedToday ? "disabled" : ""}>
         ${alreadySubmittedToday ? "Logged for today ✓" : "Log Today"}
       </button>
+      ${
+        alreadySubmittedToday
+          ? `<div class="submit-hint">Sliders keep where you leave them. Next check-in opens at ${DAY_RESET_HOUR}:00 AM.</div>`
+          : ""
+      }
     </div>
     <div class="toast" id="toast">Logged ✓</div>
   `;
@@ -64,9 +105,9 @@ export function showMainScreen(container) {
   const sliderArea = screen.querySelector("#sliderArea");
   sliderInstances = {};
 
-  for (const s of sliders) {
+  sliders.forEach((s, i) => {
     const instance = createVerticalSlider({
-      color: s.color,
+      color: themedColor(s, i),
       label: s.label,
       sub: subLabelFor(s),
       value: localValues[s.id],
@@ -74,7 +115,7 @@ export function showMainScreen(container) {
     });
     sliderInstances[s.id] = instance;
     sliderArea.appendChild(instance.el);
-  }
+  });
 
   const overrideToggle = screen.querySelector("#overrideToggle");
   if (overrideToggle) {
@@ -87,8 +128,14 @@ export function showMainScreen(container) {
     });
   }
 
-  screen.querySelector("#statsBtn").addEventListener("click", () => showStatsScreen(container));
-  screen.querySelector("#settingsBtn").addEventListener("click", () => showSettingsScreen(container));
+  screen.querySelector("#statsBtn").addEventListener("click", () => {
+    persistPositionsNow();
+    showStatsScreen(container);
+  });
+  screen.querySelector("#settingsBtn").addEventListener("click", () => {
+    persistPositionsNow();
+    showSettingsScreen(container);
+  });
 
   const submitBtn = screen.querySelector("#submitBtn");
   submitBtn.addEventListener("click", () => handleSubmit(submitBtn, screen, sliders));
@@ -107,6 +154,8 @@ function handleSliderChange(changedId, newValue, sliders, phase) {
   const strength = overrideActive && phase === 3 ? 0 : redistributionStrengthForPhase(phase);
   const updated = redistribute(localValues, changedId, newValue, strength);
   localValues = updated;
+  rememberPositions(updated);
+  schedulePersist();
 
   for (const s of sliders) {
     const instance = sliderInstances[s.id];
@@ -129,6 +178,8 @@ function subLabelForValue(s, value) {
 
 async function handleSubmit(submitBtn, screen, sliders) {
   const uid = state.user.uid;
+  clearTimeout(persistTimer);
+  persistDirty = false;
   submitBtn.disabled = true;
   submitBtn.textContent = "Saving…";
 
