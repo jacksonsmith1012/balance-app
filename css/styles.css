@@ -377,31 +377,6 @@ input.text-input:focus {
   text-align: center;
 }
 
-.override-row {
-  display: flex;
-  justify-content: center;
-  padding: 4px 0 8px;
-}
-
-.override-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 8px 16px;
-  font-size: 13px;
-  color: var(--text-dim);
-  cursor: pointer;
-}
-
-.override-toggle.active {
-  background: rgba(124, 140, 248, 0.15);
-  border-color: var(--accent);
-  color: var(--text);
-}
-
 .slider-track-area {
   flex: 1;
   display: flex;
@@ -1077,4 +1052,46 @@ input.text-input:focus {
 
 [data-theme="rose"] .google-btn {
   border: 1px solid var(--border);
+}
+
+
+/* ---------- Unlocked logging mode ---------- */
+
+.unlock-banner {
+  margin: 0 16px 8px;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 13px;
+  text-align: center;
+}
+
+.unlock-banner[hidden] {
+  display: none;
+}
+
+.submit-row {
+  display: flex;
+  gap: 10px;
+}
+
+.submit-row .submit-btn {
+  flex: 1;
+}
+
+.submit-row .btn {
+  padding: 18px 22px;
+  border-radius: var(--radius-lg);
+}
+
+.screen.unlocked .slider-shell {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+[data-theme="zen"] .screen.unlocked .slider-shell {
+  border: none;
+  box-shadow: none;
 }

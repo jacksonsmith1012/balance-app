@@ -5,18 +5,16 @@ import {
   redistribute,
   redistributionStrengthForPhase,
   pctToScaledValue,
-  entriesForSlider,
-  overrideWeightRamp,
   clamp,
 } from "./math.js";
 import { checkInDayStart, isSameCheckInDay } from "./utils.js";
-import { fetchSubmissions } from "./store.js";
 import { showStatsScreen } from "./stats.js";
 import { showSettingsScreen } from "./settings.js";
 import { themedColor } from "./themes.js";
 import { DAY_RESET_HOUR } from "./utils.js";
 
-let overrideActive = false;
+let logging = false; // true while constraints are unlocked for entering today's real values
+let preLogValues = null;
 let sliderInstances = {};
 let localValues = {};
 let persistTimer = null;
@@ -55,7 +53,8 @@ document.addEventListener("visibilitychange", () => {
 });
 
 export function showMainScreen(container) {
-  overrideActive = false;
+  logging = false;
+  preLogValues = null;
   const userDoc = state.userDoc;
   const sliders = [...(userDoc.sliders || [])].sort((a, b) => a.order - b.order);
   const phase = userDoc.phase || 1;
@@ -80,22 +79,9 @@ export function showMainScreen(container) {
         ? `<div class="warning-banner">Still learning your patterns — data may not reflect reality yet.</div>`
         : ""
     }
-    ${
-      phase === 3
-        ? `<div class="override-row"><button class="override-toggle" id="overrideToggle">🔓 Override: independent for this entry</button></div>`
-        : ""
-    }
+    <div class="unlock-banner" id="unlockBanner" hidden></div>
     <div class="slider-track-area" id="sliderArea"></div>
-    <div class="submit-area">
-      <button class="submit-btn" id="submitBtn" ${alreadySubmittedToday ? "disabled" : ""}>
-        ${alreadySubmittedToday ? "Logged for today ✓" : "Log Today"}
-      </button>
-      ${
-        alreadySubmittedToday
-          ? `<div class="submit-hint">Sliders keep where you leave them. Next check-in opens at ${DAY_RESET_HOUR}:00 AM.</div>`
-          : ""
-      }
-    </div>
+    <div class="submit-area" id="submitArea"></div>
     <div class="toast" id="toast">Logged ✓</div>
   `;
 
@@ -117,17 +103,6 @@ export function showMainScreen(container) {
     sliderArea.appendChild(instance.el);
   });
 
-  const overrideToggle = screen.querySelector("#overrideToggle");
-  if (overrideToggle) {
-    overrideToggle.addEventListener("click", () => {
-      overrideActive = !overrideActive;
-      overrideToggle.classList.toggle("active", overrideActive);
-      overrideToggle.textContent = overrideActive
-        ? "🔓 Override active — this entry won't rebalance others"
-        : "🔓 Override: independent for this entry";
-    });
-  }
-
   screen.querySelector("#statsBtn").addEventListener("click", () => {
     persistPositionsNow();
     showStatsScreen(container);
@@ -137,8 +112,67 @@ export function showMainScreen(container) {
     showSettingsScreen(container);
   });
 
-  const submitBtn = screen.querySelector("#submitBtn");
-  submitBtn.addEventListener("click", () => handleSubmit(submitBtn, screen, sliders));
+  renderSubmitArea(screen, sliders, phase, alreadySubmittedToday);
+}
+
+function renderSubmitArea(screen, sliders, phase, alreadySubmittedToday) {
+  const area = screen.querySelector("#submitArea");
+  const banner = screen.querySelector("#unlockBanner");
+  screen.classList.toggle("unlocked", logging);
+
+  if (logging) {
+    banner.hidden = false;
+    banner.textContent =
+      phase === 1
+        ? "Set each slider to how today really went."
+        : "🔓 Constraints unlocked — set each slider to how today really went.";
+    area.innerHTML = `
+      <div class="submit-row">
+        <button class="btn btn-secondary" id="cancelLogBtn">Cancel</button>
+        <button class="submit-btn" id="confirmBtn">Confirm &amp; Log</button>
+      </div>`;
+    area.querySelector("#cancelLogBtn").addEventListener("click", () => {
+      cancelLogging(sliders);
+      renderSubmitArea(screen, sliders, phase, alreadySubmittedToday);
+    });
+    const confirmBtn = area.querySelector("#confirmBtn");
+    confirmBtn.addEventListener("click", () => handleSubmit(confirmBtn, screen, sliders));
+    return;
+  }
+
+  banner.hidden = true;
+  area.innerHTML = `
+    <button class="submit-btn" id="submitBtn" ${alreadySubmittedToday ? "disabled" : ""}>
+      ${alreadySubmittedToday ? "Logged for today ✓" : "Log Today"}
+    </button>
+    ${
+      alreadySubmittedToday
+        ? `<div class="submit-hint">Sliders keep where you leave them. Next check-in opens at ${DAY_RESET_HOUR}:00 AM.</div>`
+        : ""
+    }`;
+  const submitBtn = area.querySelector("#submitBtn");
+  submitBtn.addEventListener("click", () => {
+    startLogging();
+    renderSubmitArea(screen, sliders, phase, alreadySubmittedToday);
+  });
+}
+
+function startLogging() {
+  persistPositionsNow();
+  preLogValues = { ...localValues };
+  logging = true;
+}
+
+function cancelLogging(sliders) {
+  logging = false;
+  localValues = { ...preLogValues };
+  preLogValues = null;
+  for (const s of sliders) {
+    const instance = sliderInstances[s.id];
+    if (!instance) continue;
+    instance.setValue(localValues[s.id], { silent: true });
+    instance.setSub(subLabelForValue(s, localValues[s.id]));
+  }
 }
 
 function subLabelFor(s) {
@@ -151,11 +185,13 @@ function subLabelFor(s) {
 }
 
 function handleSliderChange(changedId, newValue, sliders, phase) {
-  const strength = overrideActive && phase === 3 ? 0 : redistributionStrengthForPhase(phase);
+  const strength = logging ? 0 : redistributionStrengthForPhase(phase);
   const updated = redistribute(localValues, changedId, newValue, strength);
   localValues = updated;
-  rememberPositions(updated);
-  schedulePersist();
+  if (!logging) {
+    rememberPositions(updated);
+    schedulePersist();
+  }
 
   for (const s of sliders) {
     const instance = sliderInstances[s.id];
@@ -184,18 +220,6 @@ async function handleSubmit(submitBtn, screen, sliders) {
   submitBtn.textContent = "Saving…";
 
   const previousPhase = state.userDoc.phase || 1;
-  const wasOverride = overrideActive;
-
-  let overrideWeight = 1.0;
-  if (wasOverride) {
-    try {
-      const daily = await fetchSubmissions(uid, "daily", 60);
-      const recentOverrides = daily.filter((sub) => sub.isOverride);
-      overrideWeight = overrideWeightRamp(recentOverrides);
-    } catch {
-      overrideWeight = 0.5;
-    }
-  }
 
   const values = {};
   for (const s of sliders) values[s.id] = Math.round(localValues[s.id]);
@@ -205,21 +229,22 @@ async function handleSubmit(submitBtn, screen, sliders) {
       type: "daily",
       periodStart: checkInDayStart(),
       values,
-      isOverride: wasOverride,
-      overrideWeight,
+      isOverride: false,
+      overrideWeight: 1.0,
     });
     await recomputeStats(uid);
   } catch (err) {
     console.error("Submit failed", err);
     submitBtn.disabled = false;
-    submitBtn.textContent = "Log Today";
+    submitBtn.textContent = "Confirm & Log";
     return;
   }
 
+  logging = false;
+  preLogValues = null;
+  renderSubmitArea(screen, sliders, state.userDoc.phase || 1, true);
   showToast(screen, "Logged ✓");
-  submitBtn.classList.add("pulse");
-  submitBtn.disabled = true;
-  submitBtn.textContent = "Logged for today ✓";
+  screen.querySelector("#submitBtn")?.classList.add("pulse");
 
   const newPhase = state.userDoc.phase || previousPhase;
   if (previousPhase < 3 && newPhase === 3) {
