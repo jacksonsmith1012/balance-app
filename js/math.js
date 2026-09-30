@@ -18,24 +18,62 @@ export function clamp(value, min = 0, max = 100) {
 }
 
 /**
- * Redistributes the delta from one slider across all others.
+ * Redistributes the delta from one slider across all others, water-filling
+ * around the 0-100 bounds so the total never silently drifts.
+ *
+ * At full strength (phase 3) the total of all sliders is conserved exactly:
+ * if the others don't have enough headroom to absorb the full requested
+ * delta, the dragged slider's own movement is capped to whatever the others
+ * can actually give up. Without this, naively clamping each "other" slider
+ * independently leaks total every time one hits 0 or 100, which is how
+ * repeated dragging could ratchet every slider up to 100 or down to 0.
+ *
+ * At partial strength (phase 2's soft constraint) the dragged slider still
+ * moves the full requested amount as long as the others have enough headroom
+ * to shed their (smaller) share — the total is intentionally allowed to
+ * drift by (1 - strength) * delta, same as before, but is still capped by
+ * the others' real headroom rather than leaking through a clamp.
+ *
  * strength: 1.0 (phase 3, full), 0.5 (phase 2), 0 (phase 1, no redistribution)
  * Returns a new values map { [sliderId]: number }.
  */
 export function redistribute(values, changedId, newValue, strength) {
   const ids = Object.keys(values);
   const oldValue = values[changedId];
-  const delta = newValue - oldValue;
-  const result = { ...values, [changedId]: clamp(newValue) };
 
-  if (strength <= 0 || ids.length <= 1) return result;
+  if (strength <= 0 || ids.length <= 1) {
+    return { ...values, [changedId]: clamp(newValue) };
+  }
 
   const others = ids.filter((id) => id !== changedId);
-  const adjustmentPerOther = (-delta * strength) / others.length;
+  const desiredDelta = clamp(newValue) - oldValue;
+  const result = { ...values };
 
-  for (const id of others) {
-    result[id] = clamp(values[id] + adjustmentPerOther);
+  // Total change the other sliders need to absorb, in aggregate.
+  let remaining = -desiredDelta * strength;
+  let pool = others;
+
+  while (Math.abs(remaining) > 1e-9 && pool.length > 0) {
+    const share = remaining / pool.length;
+    const survivors = [];
+    let absorbed = 0;
+    for (const id of pool) {
+      const proposed = result[id] + share;
+      const bounded = clamp(proposed);
+      absorbed += bounded - result[id];
+      result[id] = bounded;
+      if (bounded === proposed) survivors.push(id);
+    }
+    remaining -= absorbed;
+    if (survivors.length === pool.length) break; // everyone absorbed their share; done
+    pool = survivors;
   }
+
+  // Whatever the others couldn't absorb caps the dragged slider's own
+  // movement instead, so the total is never lost or gained at the boundary.
+  const actuallyAbsorbed = -desiredDelta * strength - remaining;
+  const changedDelta = -actuallyAbsorbed / strength;
+  result[changedId] = clamp(oldValue + changedDelta);
 
   return result;
 }

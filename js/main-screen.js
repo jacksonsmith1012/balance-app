@@ -224,6 +224,7 @@ async function handleSubmit(submitBtn, screen, sliders) {
   const values = {};
   for (const s of sliders) values[s.id] = Math.round(localValues[s.id]);
 
+  let stats;
   try {
     await addSubmission(uid, {
       type: "daily",
@@ -232,7 +233,7 @@ async function handleSubmit(submitBtn, screen, sliders) {
       isOverride: false,
       overrideWeight: 1.0,
     });
-    await recomputeStats(uid);
+    stats = await recomputeStats(uid);
   } catch (err) {
     console.error("Submit failed", err);
     submitBtn.disabled = false;
@@ -240,13 +241,33 @@ async function handleSubmit(submitBtn, screen, sliders) {
     return;
   }
 
+  const newPhase = state.userDoc.phase || previousPhase;
+
+  // In full constraint mode, the locked view always starts from an even split
+  // of the constraint average — not whatever you just logged — so the total
+  // you drag around afterward is always exactly the constraint, never
+  // whatever happened to be entered this time.
+  if (newPhase === 3) {
+    const evenValue = clamp((stats?.blendedConstraintTotal ?? 0) / sliders.length);
+    localValues = {};
+    for (const s of sliders) localValues[s.id] = evenValue;
+    rememberPositions(localValues);
+    persistDirty = true;
+    persistPositionsNow();
+    for (const s of sliders) {
+      const instance = sliderInstances[s.id];
+      if (!instance) continue;
+      instance.setValue(evenValue, { silent: true });
+      instance.setSub(subLabelForValue(s, evenValue));
+    }
+  }
+
   logging = false;
   preLogValues = null;
-  renderSubmitArea(screen, sliders, state.userDoc.phase || 1, true);
+  renderSubmitArea(screen, sliders, newPhase, true);
   showToast(screen, "Logged ✓");
   screen.querySelector("#submitBtn")?.classList.add("pulse");
 
-  const newPhase = state.userDoc.phase || previousPhase;
   if (previousPhase < 3 && newPhase === 3) {
     showPhase3Activation(screen);
   }
