@@ -1,4 +1,4 @@
-import { state, addSubmission, saveUserDoc } from "./store.js";
+import { state, addSubmission, saveUserDoc, loadStats } from "./store.js";
 import { recomputeStats } from "./stats-engine.js";
 import { createVerticalSlider } from "./slider-component.js";
 import {
@@ -45,6 +45,51 @@ function rememberPositions(values) {
       ? { ...s, currentValue: Math.round(values[s.id] * 10) / 10 }
       : s
   );
+}
+
+/**
+ * Snaps every slider to an even share of `total` and persists it, visually
+ * animating the sliders already on screen if `screen` is still mounted.
+ */
+function applyEvenSplit(screen, sliders, total) {
+  const evenValue = clamp(total / sliders.length);
+  localValues = {};
+  for (const s of sliders) localValues[s.id] = evenValue;
+  rememberPositions(localValues);
+  persistDirty = true;
+  persistPositionsNow();
+
+  if (!screen || !screen.isConnected) return;
+  for (const s of sliders) {
+    const instance = sliderInstances[s.id];
+    if (!instance) continue;
+    instance.setValue(evenValue, { silent: true });
+    instance.setSub(subLabelForValue(s, evenValue));
+  }
+}
+
+// On every load, make sure the locked total still matches the constraint —
+// covers values that drifted from the old redistribution bug, a slider that
+// was added/removed since the last visit, or any other way the two could get
+// out of sync. A correct, already-matching total is left untouched.
+async function reconcileWithConstraint(screen, sliders, phase) {
+  if (phase !== 3 || !sliders.length || !state.user) return;
+  let stats;
+  try {
+    stats = await loadStats(state.user.uid);
+  } catch (err) {
+    console.error("Couldn't check constraint total", err);
+    return;
+  }
+  const total = stats?.blendedConstraintTotal;
+  if (total == null) return;
+  if (logging) return; // don't fight a log in progress
+
+  const currentTotal = sliders.reduce((sum, s) => sum + (localValues[s.id] ?? 0), 0);
+  if (Math.abs(currentTotal - total) < 0.5) return;
+
+  applyEvenSplit(screen, sliders, total);
+  if (screen?.isConnected) showToast(screen, "Rebalanced to match your constraint ⚖️");
 }
 
 window.addEventListener("pagehide", persistPositionsNow);
@@ -113,6 +158,7 @@ export function showMainScreen(container) {
   });
 
   renderSubmitArea(screen, sliders, phase, alreadySubmittedToday);
+  reconcileWithConstraint(screen, sliders, phase);
 }
 
 function renderSubmitArea(screen, sliders, phase, alreadySubmittedToday) {
@@ -247,19 +293,8 @@ async function handleSubmit(submitBtn, screen, sliders) {
   // of the constraint average — not whatever you just logged — so the total
   // you drag around afterward is always exactly the constraint, never
   // whatever happened to be entered this time.
-  if (newPhase === 3) {
-    const evenValue = clamp((stats?.blendedConstraintTotal ?? 0) / sliders.length);
-    localValues = {};
-    for (const s of sliders) localValues[s.id] = evenValue;
-    rememberPositions(localValues);
-    persistDirty = true;
-    persistPositionsNow();
-    for (const s of sliders) {
-      const instance = sliderInstances[s.id];
-      if (!instance) continue;
-      instance.setValue(evenValue, { silent: true });
-      instance.setSub(subLabelForValue(s, evenValue));
-    }
+  if (newPhase === 3 && stats?.blendedConstraintTotal != null) {
+    applyEvenSplit(screen, sliders, stats.blendedConstraintTotal);
   }
 
   logging = false;
