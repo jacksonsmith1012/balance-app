@@ -2,7 +2,7 @@ import { clamp } from "./math.js";
 
 /**
  * Creates a vertical drag slider DOM element.
- * options: { color, label, sub, value, onChange(value), onCommit(value), interactive }
+ * options: { color, label, sub, value, onStart(), onChange(value), onCommit(value), interactive }
  * Returns { el, setValue(value), setSub(text) }.
  */
 export function createVerticalSlider(options) {
@@ -11,6 +11,7 @@ export function createVerticalSlider(options) {
     label,
     sub = "",
     value = 50,
+    onStart = () => {},
     onChange = () => {},
     onCommit = () => {},
     interactive = true,
@@ -80,6 +81,7 @@ export function createVerticalSlider(options) {
     function pointerDown(e) {
       dragging = true;
       shell.style.cursor = "grabbing";
+      onStart();
       const clientY = e.touches ? e.touches[0].clientY : e.clientY;
       setValue(valueFromClientY(clientY));
       e.preventDefault();

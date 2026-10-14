@@ -1,20 +1,16 @@
 import { state, addSubmission, saveUserDoc, loadStats } from "./store.js";
 import { recomputeStats } from "./stats-engine.js";
 import { createVerticalSlider } from "./slider-component.js";
-import {
-  redistribute,
-  redistributionStrengthForPhase,
-  pctToScaledValue,
-  clamp,
-} from "./math.js";
-import { checkInDayStart, isSameCheckInDay } from "./utils.js";
+import { redistribute, evenSplit, isBalanced, pctToScaledValue, clamp } from "./math.js";
+import { checkInDayStart, isSameCheckInDay, DAY_RESET_HOUR } from "./utils.js";
 import { showStatsScreen } from "./stats.js";
 import { showSettingsScreen } from "./settings.js";
 import { themedColor } from "./themes.js";
-import { DAY_RESET_HOUR } from "./utils.js";
+import { DEFAULT_CADENCE_VALUE } from "./constants.js";
 
 let logging = false; // true while constraints are unlocked for entering today's real values
 let preLogValues = null;
+let dragBase = null; // slider values when the current drag began
 let sliderInstances = {};
 let localValues = {};
 let persistTimer = null;
@@ -48,48 +44,64 @@ function rememberPositions(values) {
 }
 
 /**
- * Snaps every slider to an even share of `total` and persists it, visually
- * animating the sliders already on screen if `screen` is still mounted.
+ * Makes the sliders add up to exactly `average` x slider count and remembers
+ * that average on the account. Values that are already balanced (whole
+ * percents, correct total) are left where they are unless `forceSplit` is set;
+ * otherwise everything snaps to an even split (all within 1% of each other).
+ * Returns true if any slider moved.
  */
-function applyEvenSplit(screen, sliders, total) {
-  const evenValue = clamp(total / sliders.length);
-  localValues = {};
-  for (const s of sliders) localValues[s.id] = evenValue;
-  rememberPositions(localValues);
-  persistDirty = true;
-  persistPositionsNow();
+function applyAverage(screen, sliders, average, { forceSplit = false } = {}) {
+  const total = average * sliders.length;
+  const needsSplit = forceSplit || !isBalanced(sliders.map((s) => localValues[s.id]), total);
+  const averageChanged = state.userDoc.constraintAverage !== average;
+  state.userDoc.constraintAverage = average;
 
-  if (!screen || !screen.isConnected) return;
-  for (const s of sliders) {
-    const instance = sliderInstances[s.id];
-    if (!instance) continue;
-    instance.setValue(evenValue, { silent: true });
-    instance.setSub(subLabelForValue(s, evenValue));
+  if (needsSplit) {
+    const split = evenSplit(total, sliders.length);
+    sliders.forEach((s, i) => (localValues[s.id] = split[i]));
+    rememberPositions(localValues);
   }
+
+  if (needsSplit || averageChanged) {
+    clearTimeout(persistTimer);
+    persistDirty = false;
+    saveUserDoc(state.user.uid, {
+      sliders: state.userDoc.sliders,
+      constraintAverage: average,
+    }).catch((err) => console.error("Couldn't save constraint average", err));
+  }
+
+  if (needsSplit && screen?.isConnected) {
+    for (const s of sliders) {
+      const instance = sliderInstances[s.id];
+      if (!instance) continue;
+      instance.setValue(localValues[s.id], { silent: true });
+      instance.setSub(subLabelForValue(s, localValues[s.id]));
+    }
+  }
+  return needsSplit;
 }
 
-// On every load, make sure the locked total still matches the constraint —
-// covers values that drifted from the old redistribution bug, a slider that
-// was added/removed since the last visit, or any other way the two could get
-// out of sync. A correct, already-matching total is left untouched.
-async function reconcileWithConstraint(screen, sliders, phase) {
-  if (phase !== 3 || !sliders.length || !state.user) return;
-  let stats;
+// Accounts from before the average was stored on the user: work it out from the
+// saved stats once, remember it, and rebalance. After this it's always on hand.
+async function establishAverage(screen, sliders) {
+  if (!state.user) return;
+  let average = DEFAULT_CADENCE_VALUE;
   try {
-    stats = await loadStats(state.user.uid);
+    const stats = await loadStats(state.user.uid);
+    const count = Object.keys(stats?.blendedConstraintPerSlider || {}).length || sliders.length;
+    if (stats?.blendedConstraintTotal != null) average = stats.blendedConstraintTotal / count;
   } catch (err) {
-    console.error("Couldn't check constraint total", err);
+    console.error("Couldn't load constraint average", err);
     return;
   }
-  const total = stats?.blendedConstraintTotal;
-  if (total == null) return;
-  if (logging) return; // don't fight a log in progress
+  if (logging || !screen.isConnected) return;
+  const moved = applyAverage(screen, sliders, average);
+  if (moved && (state.userDoc.dailySubmissionCount || 0) > 0) showRebalanceToast(screen);
+}
 
-  const currentTotal = sliders.reduce((sum, s) => sum + (localValues[s.id] ?? 0), 0);
-  if (Math.abs(currentTotal - total) < 0.5) return;
-
-  applyEvenSplit(screen, sliders, total);
-  if (screen?.isConnected) showToast(screen, "Rebalanced to match your constraint ⚖️");
+function showRebalanceToast(screen) {
+  showToast(screen, "Rebalanced to match your constraint ⚖️");
 }
 
 window.addEventListener("pagehide", persistPositionsNow);
@@ -100,12 +112,18 @@ document.addEventListener("visibilitychange", () => {
 export function showMainScreen(container) {
   logging = false;
   preLogValues = null;
+  dragBase = null;
   const userDoc = state.userDoc;
   const sliders = [...(userDoc.sliders || [])].sort((a, b) => a.order - b.order);
   const phase = userDoc.phase || 1;
 
   localValues = {};
   for (const s of sliders) localValues[s.id] = clamp(s.currentValue ?? 50);
+
+  // The total is locked to the stored constraint average from the moment the
+  // screen loads — anything that doesn't add up gets evened out before it's drawn.
+  const hasAverage = userDoc.constraintAverage != null;
+  const corrected = hasAverage ? applyAverage(null, sliders, userDoc.constraintAverage) : false;
 
   const alreadySubmittedToday = isSameCheckInDay(userDoc.lastDailySubmission);
 
@@ -140,9 +158,15 @@ export function showMainScreen(container) {
     const instance = createVerticalSlider({
       color: themedColor(s, i),
       label: s.label,
-      sub: subLabelFor(s),
+      sub: subLabelForValue(s, localValues[s.id]),
       value: localValues[s.id],
-      onChange: (v) => handleSliderChange(s.id, v, sliders, phase),
+      onStart: () => {
+        dragBase = { ...localValues };
+      },
+      onChange: (v) => handleSliderChange(s.id, v, sliders),
+      onCommit: () => {
+        dragBase = null;
+      },
     });
     sliderInstances[s.id] = instance;
     sliderArea.appendChild(instance.el);
@@ -157,21 +181,23 @@ export function showMainScreen(container) {
     showSettingsScreen(container);
   });
 
-  renderSubmitArea(screen, sliders, phase, alreadySubmittedToday);
-  reconcileWithConstraint(screen, sliders, phase);
+  renderSubmitArea(screen, sliders, alreadySubmittedToday);
+
+  if (hasAverage) {
+    if (corrected && (userDoc.dailySubmissionCount || 0) > 0) showRebalanceToast(screen);
+  } else {
+    establishAverage(screen, sliders);
+  }
 }
 
-function renderSubmitArea(screen, sliders, phase, alreadySubmittedToday) {
+function renderSubmitArea(screen, sliders, alreadySubmittedToday) {
   const area = screen.querySelector("#submitArea");
   const banner = screen.querySelector("#unlockBanner");
   screen.classList.toggle("unlocked", logging);
 
   if (logging) {
     banner.hidden = false;
-    banner.textContent =
-      phase === 1
-        ? "Set each slider to how today really went."
-        : "🔓 Constraints unlocked — set each slider to how today really went.";
+    banner.textContent = "🔓 Constraint unlocked — set each slider to how today really went.";
     area.innerHTML = `
       <div class="submit-row">
         <button class="btn btn-secondary" id="cancelLogBtn">Cancel</button>
@@ -179,7 +205,7 @@ function renderSubmitArea(screen, sliders, phase, alreadySubmittedToday) {
       </div>`;
     area.querySelector("#cancelLogBtn").addEventListener("click", () => {
       cancelLogging(sliders);
-      renderSubmitArea(screen, sliders, phase, alreadySubmittedToday);
+      renderSubmitArea(screen, sliders, alreadySubmittedToday);
     });
     const confirmBtn = area.querySelector("#confirmBtn");
     confirmBtn.addEventListener("click", () => handleSubmit(confirmBtn, screen, sliders));
@@ -199,7 +225,7 @@ function renderSubmitArea(screen, sliders, phase, alreadySubmittedToday) {
   const submitBtn = area.querySelector("#submitBtn");
   submitBtn.addEventListener("click", () => {
     startLogging();
-    renderSubmitArea(screen, sliders, phase, alreadySubmittedToday);
+    renderSubmitArea(screen, sliders, alreadySubmittedToday);
   });
 }
 
@@ -221,31 +247,22 @@ function cancelLogging(sliders) {
   }
 }
 
-function subLabelFor(s) {
-  if (s.metricType === "hours" || s.metricType === "days") {
-    const actual = pctToScaledValue(s.currentValue ?? 50, s.satisfiedValue, s.unsatisfiedValue);
-    const unit = s.metricType === "hours" ? "hrs" : "d/wk";
-    return `${actual.toFixed(1)} ${unit}`;
-  }
-  return "";
-}
-
-function handleSliderChange(changedId, newValue, sliders, phase) {
-  const strength = logging ? 0 : redistributionStrengthForPhase(phase);
-  const updated = redistribute(localValues, changedId, newValue, strength);
-  localValues = updated;
-  if (!logging) {
-    rememberPositions(updated);
+function handleSliderChange(changedId, newValue, sliders) {
+  if (logging) {
+    // Entering what really happened: only this slider moves.
+    localValues = { ...localValues, [changedId]: Math.round(clamp(newValue)) };
+  } else {
+    // Locked: the total can't change, so everyone else moves with it.
+    localValues = redistribute(dragBase ?? localValues, changedId, newValue);
+    rememberPositions(localValues);
     schedulePersist();
   }
 
   for (const s of sliders) {
     const instance = sliderInstances[s.id];
     if (!instance) continue;
-    if (s.id !== changedId) {
-      instance.setValue(updated[s.id], { silent: true });
-    }
-    instance.setSub(subLabelForValue(s, updated[s.id]));
+    if (!logging || s.id !== changedId) instance.setValue(localValues[s.id], { silent: true });
+    instance.setSub(subLabelForValue(s, localValues[s.id]));
   }
 }
 
@@ -289,17 +306,15 @@ async function handleSubmit(submitBtn, screen, sliders) {
 
   const newPhase = state.userDoc.phase || previousPhase;
 
-  // In full constraint mode, the locked view always starts from an even split
-  // of the constraint average — not whatever you just logged — so the total
-  // you drag around afterward is always exactly the constraint, never
-  // whatever happened to be entered this time.
-  if (newPhase === 3 && stats?.blendedConstraintTotal != null) {
-    applyEvenSplit(screen, sliders, stats.blendedConstraintTotal);
+  // Back to locked: every slider returns to the same level (within 1%) so they
+  // add up to the freshly updated constraint average — not whatever you just logged.
+  if (stats?.blendedConstraintTotal != null) {
+    applyAverage(screen, sliders, stats.blendedConstraintTotal / sliders.length, { forceSplit: true });
   }
 
   logging = false;
   preLogValues = null;
-  renderSubmitArea(screen, sliders, newPhase, true);
+  renderSubmitArea(screen, sliders, true);
   showToast(screen, "Logged ✓");
   screen.querySelector("#submitBtn")?.classList.add("pulse");
 

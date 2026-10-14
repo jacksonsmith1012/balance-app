@@ -18,70 +18,62 @@ export function clamp(value, min = 0, max = 100) {
 }
 
 /**
- * Redistributes the delta from one slider across all others, water-filling
- * around the 0-100 bounds so the total never silently drifts.
+ * Moves one slider and rebalances the others so the total never changes.
  *
- * At full strength (phase 3) the total of all sliders is conserved exactly:
- * if the others don't have enough headroom to absorb the full requested
- * delta, the dragged slider's own movement is capped to whatever the others
- * can actually give up. Without this, naively clamping each "other" slider
- * independently leaks total every time one hits 0 or 100, which is how
- * repeated dragging could ratchet every slider up to 100 or down to 0.
- *
- * At partial strength (phase 2's soft constraint) the dragged slider still
- * moves the full requested amount as long as the others have enough headroom
- * to shed their (smaller) share — the total is intentionally allowed to
- * drift by (1 - strength) * delta, same as before, but is still capped by
- * the others' real headroom rather than leaking through a clamp.
- *
- * strength: 1.0 (phase 3, full), 0.5 (phase 2), 0 (phase 1, no redistribution)
- * Returns a new values map { [sliderId]: number }.
+ * Values are whole percents, so the numbers on screen always add up exactly.
+ * `values` is the snapshot from when the drag started; the result is computed
+ * from that snapshot and the dragged slider's current target, so dragging
+ * up-and-back lands exactly where it began. The other sliders absorb the
+ * change 1% at a time in round-robin order (equal shares, off by at most 1%),
+ * skipping any already at 0 or 100. If they can't absorb all of it, the
+ * dragged slider stops short instead of letting the total drift.
  */
-export function redistribute(values, changedId, newValue, strength) {
+export function redistribute(values, changedId, requestedValue) {
+  const result = { ...values };
   const ids = Object.keys(values);
-  const oldValue = values[changedId];
+  if (ids.length <= 1) return result;
 
-  if (strength <= 0 || ids.length <= 1) {
-    return { ...values, [changedId]: clamp(newValue) };
-  }
+  const start = values[changedId];
+  const target = Math.round(clamp(requestedValue));
+  const direction = Math.sign(target - start); // others move the opposite way
+  if (direction === 0) return result;
 
   const others = ids.filter((id) => id !== changedId);
-  const desiredDelta = clamp(newValue) - oldValue;
-  const result = { ...values };
+  let remaining = Math.abs(target - start);
+  let moved = 0;
 
-  // Total change the other sliders need to absorb, in aggregate.
-  let remaining = -desiredDelta * strength;
-  let pool = others;
-
-  while (Math.abs(remaining) > 1e-9 && pool.length > 0) {
-    const share = remaining / pool.length;
-    const survivors = [];
-    let absorbed = 0;
-    for (const id of pool) {
-      const proposed = result[id] + share;
-      const bounded = clamp(proposed);
-      absorbed += bounded - result[id];
-      result[id] = bounded;
-      if (bounded === proposed) survivors.push(id);
+  while (remaining > 0) {
+    let progressed = false;
+    for (const id of others) {
+      if (remaining === 0) break;
+      const next = result[id] - direction;
+      if (next < 0 || next > 100) continue;
+      result[id] = next;
+      remaining--;
+      moved++;
+      progressed = true;
     }
-    remaining -= absorbed;
-    if (survivors.length === pool.length) break; // everyone absorbed their share; done
-    pool = survivors;
+    if (!progressed) break;
   }
 
-  // Whatever the others couldn't absorb caps the dragged slider's own
-  // movement instead, so the total is never lost or gained at the boundary.
-  const actuallyAbsorbed = -desiredDelta * strength - remaining;
-  const changedDelta = -actuallyAbsorbed / strength;
-  result[changedId] = clamp(oldValue + changedDelta);
-
+  result[changedId] = start + direction * moved;
   return result;
 }
 
-export function redistributionStrengthForPhase(phase) {
-  if (phase === 3) return 1.0;
-  if (phase === 2) return 0.5;
-  return 0;
+/** Splits `total` into `count` whole numbers that differ by at most 1 and add up exactly. */
+export function evenSplit(total, count) {
+  const whole = Math.round(total);
+  const base = Math.floor(whole / count);
+  const extra = whole - base * count;
+  return Array.from({ length: count }, (_, i) => clamp(base + (i < extra ? 1 : 0)));
+}
+
+/** True when every value is a whole percent and they add up to exactly `total`. */
+export function isBalanced(valuesList, total) {
+  return (
+    valuesList.every((v) => Number.isInteger(v)) &&
+    valuesList.reduce((a, b) => a + b, 0) === Math.round(total)
+  );
 }
 
 /** Maps an actual scaled value (e.g. sleep hours, fitness days/week) to 0-100%. */

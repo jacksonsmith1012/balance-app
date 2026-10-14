@@ -154,6 +154,7 @@ export async function resetAllData(uid) {
     lastWeeklySubmission: null,
     lastMonthlySubmission: null,
     sliders: resetSliders,
+    constraintAverage: null,
   });
   await setDoc(doc(db, "users", uid, "stats", "current"), {
     dailyAvg: {},
