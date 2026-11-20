@@ -90,13 +90,12 @@ function renderStats(body, sliders, daily) {
   }
 
   const ranked = [...withData].sort((a, b) => b.avg - a.avg);
-  const room = ranked.filter((r) => r.avg < STATUS_THRESHOLDS.yellow).reverse(); // lowest first
+  const room = ranked.slice(-2).reverse(); // the two lowest, lowest first
   const good = ranked.filter((r) => r.avg >= STATUS_THRESHOLDS.green);
   const overall = withData.reduce((sum, r) => sum + r.avg, 0) / withData.length;
 
   body.innerHTML = `
-    ${callout("room", "Room to grow", room, (r) => `${r.slider.label} <span>${Math.round(100 - r.avg)} points below full</span>`,
-      `Nothing under ${STATUS_THRESHOLDS.yellow}% — every area is holding up.`)}
+    ${callout("room", "Room to grow", room, (r) => `${r.slider.label} <span>${Math.round(r.avg)}%</span>`, "")}
     ${callout("good", "Going well", good, (r) => `${r.slider.label} <span>${Math.round(r.avg)}%</span>`,
       `Nothing at ${STATUS_THRESHOLDS.green}% or above yet.`)}
     <div class="section-title">All areas, best to lowest</div>
