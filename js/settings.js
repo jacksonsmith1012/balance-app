@@ -10,7 +10,7 @@ import {
 } from "./constants.js";
 import { confirmModal, customSheet } from "./modal.js";
 import { showMainScreen } from "./main-screen.js";
-import { promptAddToHomeScreen } from "./notifications.js";
+import { promptAddToHomeScreen } from "./install.js";
 import { THEMES, applyTheme, currentThemeId, themedColor } from "./themes.js";
 
 export function showSettingsScreen(container) {
@@ -29,10 +29,6 @@ export function showSettingsScreen(container) {
       <div class="settings-row clickable" id="editNameRow">
         <span class="row-label">Name</span>
         <span class="chevron">${userDoc.name || ""} ›</span>
-      </div>
-      <div class="settings-row clickable" id="notifTimeRow">
-        <span class="row-label">Daily reminder time</span>
-        <span class="chevron">${userDoc.notificationTime || "21:00"} ›</span>
       </div>
       <div class="settings-row clickable" id="a2hsRow">
         <span class="row-label">Add to Home Screen</span>
@@ -94,7 +90,6 @@ export function showSettingsScreen(container) {
   });
 
   screen.querySelector("#editNameRow").addEventListener("click", () => openEditName(screen));
-  screen.querySelector("#notifTimeRow").addEventListener("click", () => openEditNotifTime(screen));
   screen.querySelector("#a2hsRow").addEventListener("click", () => promptAddToHomeScreen({ force: true }));
   screen.querySelector("#addSliderBtn").addEventListener("click", () => openAddSlider(screen, container));
 
@@ -183,28 +178,6 @@ function openEditName(screen) {
       sheet.querySelector("#saveBtn").addEventListener("click", async () => {
         const name = sheet.querySelector("#nameInput").value.trim();
         if (name) await saveUserDoc(state.user.uid, { name });
-        close();
-        showSettingsScreen(document.getElementById("app"));
-      });
-    }
-  );
-}
-
-function openEditNotifTime(screen) {
-  customSheet(
-    `
-      <div class="modal-title">Daily reminder time</div>
-      <input class="time-input" type="time" id="timeInput" value="${state.userDoc.notificationTime || "21:00"}" />
-      <div class="modal-actions" style="margin-top:16px;">
-        <button class="btn btn-secondary" id="cancelBtn">Cancel</button>
-        <button class="btn btn-primary" id="saveBtn">Save</button>
-      </div>
-    `,
-    (sheet, close) => {
-      sheet.querySelector("#cancelBtn").addEventListener("click", close);
-      sheet.querySelector("#saveBtn").addEventListener("click", async () => {
-        const notificationTime = sheet.querySelector("#timeInput").value;
-        if (notificationTime) await saveUserDoc(state.user.uid, { notificationTime });
         close();
         showSettingsScreen(document.getElementById("app"));
       });

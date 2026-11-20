@@ -44,8 +44,6 @@ export async function createUserDoc(uid, data) {
     lastDailySubmission: null,
     lastWeeklySubmission: null,
     lastMonthlySubmission: null,
-    notificationTime: "21:00",
-    fcmToken: null,
     addToHomeScreenDismissed: false,
     sliders: [],
   };

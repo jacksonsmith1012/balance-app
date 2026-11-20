@@ -23,13 +23,6 @@ import {
   deleteDoc,
   serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {
-  getMessaging,
-  getToken,
-  onMessage,
-  isSupported as messagingIsSupported,
-} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging.js";
-
 const firebaseConfig = {
   apiKey: "AIzaSyBrJR3qLmO_q9Ccu36ZGJUN-isIjenLz7A",
   authDomain: "balance-app-jacksonsmith.firebaseapp.com",
@@ -62,8 +55,4 @@ export {
   getDocs,
   deleteDoc,
   serverTimestamp,
-  getMessaging,
-  getToken,
-  onMessage,
-  messagingIsSupported,
 };

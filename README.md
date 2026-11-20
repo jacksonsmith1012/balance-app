@@ -7,9 +7,9 @@ context (design doc) for full product details — this README covers setup/deplo
 ## Stack
 
 - Vanilla HTML/CSS/JS (ES modules, no build step)
-- Firebase Auth (Google Sign-In), Firestore, Cloud Messaging
+- Firebase Auth (Google Sign-In), Firestore
 - GitHub Pages hosting
-- GitHub Actions for deployment + scheduled push notifications
+- GitHub Actions for deployment
 
 ## One-time setup
 
@@ -23,13 +23,6 @@ Project: `balance-app-jacksonsmith`
 3. **Firestore Database** — already provisioned. Deploy the security rules in
    `firestore.rules` (see below) before real users sign in — the project starts
    locked down, so no one can read/write data until rules are deployed.
-4. **Cloud Messaging** → Web configuration → generate a **Web Push certificate**
-   (VAPID key). Paste it into `js/notifications.js`:
-   ```js
-   export const VAPID_KEY = "your-key-here";
-   ```
-5. **Project settings → Service accounts** → Generate new private key (JSON).
-   You'll use this for the scheduled-notifications GitHub Action (step 3 below).
 
 ### 2. Deploy Firestore rules
 
@@ -48,10 +41,6 @@ firebase deploy --only firestore:rules --project balance-app-jacksonsmith
 
 1. **Settings → Pages** → Source: "GitHub Actions" (the `deploy.yml` workflow
    handles the rest on every push to `main`).
-2. **Settings → Secrets and variables → Actions** → add a secret named
-   `FIREBASE_SERVICE_ACCOUNT` containing the full JSON from step 1.5 above. This
-   powers `notify/send-notifications.js`, which GitHub Actions runs hourly to
-   send daily/weekly/monthly check-in reminders via FCM.
 
 ### 4. Icons
 
@@ -76,14 +65,10 @@ live Firebase project even from localhost (it's an authorized domain by default)
 
 ## Known limitations / follow-ups
 
-- **Notification timing is UTC-hour-based**, not per-user timezone (the data
-  model has no timezone field). A user's reminder fires at whatever UTC hour
-  matches the hour portion of their chosen time.
 - **Override weight ramp** (5/10 consistent overrides → 0.75/1.0 weight) uses a
   simple last-60-submission window rather than a strict rolling 30-day count;
   revisit if the spec's exact intent differs.
 - **Stats chart type** was built as a styled bar/line combo (overview cards +
   horizontal balance bars + an SVG line chart for trends) — the spec left this
   open (radial vs. bar vs. styled sliders).
-- Service worker caches the app shell for offline use; FCM background push is
-  handled in the same `service-worker.js` via the Firebase compat SDK.
+- Service worker caches the app shell for offline use.

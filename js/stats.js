@@ -1,173 +1,146 @@
-import { state, fetchSubmissions, loadStats } from "./store.js";
-import { statusColor, trendArrow } from "./math.js";
+import { state, fetchSubmissions } from "./store.js";
+import { entriesForSlider, weightedAverage } from "./math.js";
 import { STATUS_THRESHOLDS } from "./constants.js";
 import { showMainScreen } from "./main-screen.js";
 import { themedColor } from "./themes.js";
+import { toDate } from "./utils.js";
 
-let currentCadence = "daily";
+const WINDOWS = [
+  { id: "7", label: "7 days", days: 7 },
+  { id: "30", label: "30 days", days: 30 },
+  { id: "all", label: "All time", days: null },
+];
+
+let currentWindow = "30";
 
 export async function showStatsScreen(container) {
-  const userDoc = state.userDoc;
-  const sliders = [...(userDoc.sliders || [])].sort((a, b) => a.order - b.order);
+  const sliders = [...(state.userDoc.sliders || [])].sort((a, b) => a.order - b.order);
 
   const screen = document.createElement("div");
   screen.className = "screen stats-screen";
   screen.innerHTML = `
     <div class="stats-header">
       <button class="icon-btn" id="backBtn" aria-label="Back">←</button>
-      <div class="stats-title">Your Balance</div>
+      <div class="stats-title">How you're doing</div>
     </div>
-    <div class="overview-scroll" id="overviewScroll">${skeletonCards(sliders.length)}</div>
-    <div class="section-title">Balance View</div>
-    <div class="balance-view" id="balanceView">${skeletonLine()}${skeletonLine()}</div>
-    <div class="section-title">Trends</div>
-    <div class="cadence-toggle" id="cadenceToggle">
-      <button data-cadence="daily" class="active">Daily</button>
-      <button data-cadence="weekly">Weekly</button>
-      <button data-cadence="monthly">Monthly</button>
+    <div class="window-toggle" id="windowToggle">
+      ${WINDOWS.map(
+        (w) => `<button data-window="${w.id}" class="${w.id === currentWindow ? "active" : ""}">${w.label}</button>`
+      ).join("")}
     </div>
-    <div class="trend-chart" id="trendChart">${skeletonLine(120)}</div>
+    <div id="statsBody">
+      <div class="skeleton" style="height:96px;margin-bottom:12px"></div>
+      <div class="skeleton" style="height:96px;margin-bottom:12px"></div>
+      <div class="skeleton" style="height:180px"></div>
+    </div>
   `;
 
   container.innerHTML = "";
   container.appendChild(screen);
-
   screen.querySelector("#backBtn").addEventListener("click", () => showMainScreen(container));
 
-  let submissions = null;
-  screen.querySelector("#cadenceToggle").addEventListener("click", (e) => {
-    const btn = e.target.closest("button[data-cadence]");
+  let daily = null;
+  const body = screen.querySelector("#statsBody");
+
+  screen.querySelector("#windowToggle").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-window]");
     if (!btn) return;
-    currentCadence = btn.dataset.cadence;
-    screen.querySelectorAll("#cadenceToggle button").forEach((b) => b.classList.toggle("active", b === btn));
-    if (submissions) renderTrendChart(screen, sliders, submissions, currentCadence);
+    currentWindow = btn.dataset.window;
+    screen.querySelectorAll("#windowToggle button").forEach((b) => b.classList.toggle("active", b === btn));
+    if (daily) renderStats(body, sliders, daily);
   });
-  currentCadence = "daily";
 
   try {
-    // One parallel round trip; submissions are cached in the store afterwards.
-    const uid = state.user.uid;
-    const [stats, all] = await Promise.all([loadStats(uid), fetchSubmissions(uid, null, 300)]);
-    if (!screen.isConnected) return;
-    submissions = all;
-    renderOverview(screen, sliders, stats || {});
-    renderBalanceView(screen, sliders, stats || {});
-    renderTrendChart(screen, sliders, submissions, currentCadence);
+    daily = await fetchSubmissions(state.user.uid, "daily", 300);
   } catch (err) {
     console.error("Stats load failed", err);
-    if (!screen.isConnected) return;
-    const msg = `<div class="stats-empty">Couldn't load your stats. Check your connection and reopen this screen.</div>`;
-    screen.querySelector("#overviewScroll").innerHTML = "";
-    screen.querySelector("#balanceView").innerHTML = msg;
-    screen.querySelector("#trendChart").innerHTML = msg;
-  }
-}
-
-function skeletonCards(n) {
-  return Array.from({ length: Math.max(n, 3) }, () => `<div class="overview-card skeleton" style="height:98px"></div>`).join("");
-}
-
-function skeletonLine(h = 18) {
-  return `<div class="skeleton" style="height:${h}px;border-radius:8px;margin-bottom:12px"></div>`;
-}
-
-function renderOverview(screen, sliders, stats) {
-  const wrap = screen.querySelector("#overviewScroll");
-  wrap.innerHTML = "";
-  for (const s of sliders) {
-    const current = stats.dailyAvg?.[s.id];
-    const prior = stats.weeklyAvg?.[s.id];
-    const trend = trendArrow(current, prior);
-    const color = statusColor(current, STATUS_THRESHOLDS);
-    const arrowChar = trend === "up" ? "▲" : trend === "down" ? "▼" : "▬";
-    const card = document.createElement("div");
-    card.className = "overview-card";
-    card.innerHTML = `
-      <div class="label">${s.label}</div>
-      <div class="value">${current != null ? Math.round(current) + "%" : "—"}</div>
-      <div class="trend"><span class="status-dot ${color}"></span>${arrowChar} vs weekly</div>
-    `;
-    wrap.appendChild(card);
-  }
-}
-
-function renderBalanceView(screen, sliders, stats) {
-  const wrap = screen.querySelector("#balanceView");
-  wrap.innerHTML = "";
-  const total = stats.blendedConstraintTotal;
-  const summary = document.createElement("div");
-  summary.style.cssText = "margin-bottom:14px;color:var(--text-dim);font-size:13px;";
-  summary.textContent =
-    total != null
-      ? `Blended constraint total: ${Math.round(total)} across ${sliders.length} areas`
-      : "Not enough data yet — keep logging to unlock your balance view.";
-  wrap.appendChild(summary);
-
-  for (const s of sliders) {
-    const constraintVal = stats.blendedConstraintPerSlider?.[s.id];
-    const currentVal = s.currentValue ?? 0;
-    const row = document.createElement("div");
-    row.className = "balance-bar-row";
-    row.innerHTML = `
-      <div class="balance-bar-label">${s.label}</div>
-      <div class="balance-bar-track">
-        <div class="balance-bar-fill" style="width:${clampPct(currentVal)}%;background:${themedColor(s)}"></div>
-      </div>
-      <div class="balance-bar-value">${Math.round(currentVal)}%</div>
-    `;
-    wrap.appendChild(row);
-    if (constraintVal != null) {
-      const sub = document.createElement("div");
-      sub.style.cssText = "font-size:11px;color:var(--text-faint);margin:-4px 0 8px 80px;";
-      sub.textContent = `constraint avg: ${Math.round(constraintVal)}%`;
-      wrap.appendChild(sub);
+    if (screen.isConnected) {
+      body.innerHTML = `<div class="stats-empty">Couldn't load your stats. Check your connection and reopen this screen.</div>`;
     }
+    return;
   }
+  if (!screen.isConnected) return;
+  renderStats(body, sliders, daily);
 }
 
-function clampPct(v) {
-  return Math.min(100, Math.max(0, v));
+function averagesInWindow(sliders, daily) {
+  const days = WINDOWS.find((w) => w.id === currentWindow).days;
+  const cutoff = days ? Date.now() - days * 24 * 60 * 60 * 1000 : 0;
+  const inWindow = daily.filter((s) => {
+    const when = toDate(s.submittedAt);
+    return when && when.getTime() >= cutoff;
+  });
+  return sliders.map((s, i) => {
+    const avg = weightedAverage(entriesForSlider(inWindow, s.id));
+    return { slider: s, color: themedColor(s, i), avg, logs: inWindow.length };
+  });
 }
 
-function renderTrendChart(screen, sliders, allSubmissions, cadence) {
-  const chart = screen.querySelector("#trendChart");
-  const ordered = allSubmissions.filter((s) => s.type === cadence).slice(0, 60).reverse(); // oldest first
-
-  if (ordered.length < 2) {
-    chart.innerHTML = `<div class="stats-empty">Not enough ${cadence} data yet.</div>`;
+function renderStats(body, sliders, daily) {
+  if (!daily.length) {
+    body.innerHTML = `<div class="stats-empty">Log your first check-in to see how each area is doing.</div>`;
     return;
   }
 
-  const width = 320;
-  const height = 160;
-  const padding = 10;
-  const n = ordered.length;
-
-  const xFor = (i) => padding + (i / (n - 1)) * (width - padding * 2);
-  const yFor = (v) => height - padding - (v / 100) * (height - padding * 2);
-
-  let svg = `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" preserveAspectRatio="none">`;
-  svg += `<line x1="${padding}" y1="${yFor(50)}" x2="${width - padding}" y2="${yFor(50)}" stroke="var(--border)" stroke-dasharray="4 4" />`;
-
-  for (const s of sliders) {
-    const points = ordered.map((sub, i) => {
-      const v = sub.values?.[s.id];
-      return v == null ? null : `${xFor(i)},${yFor(v)}`;
-    });
-    const validPoints = points.filter(Boolean);
-    if (validPoints.length < 2) continue;
-    svg += `<polyline fill="none" stroke="${themedColor(s)}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points="${validPoints.join(" ")}" />`;
+  const rows = averagesInWindow(sliders, daily);
+  const withData = rows.filter((r) => r.avg != null);
+  if (!withData.length) {
+    body.innerHTML = `<div class="stats-empty">No check-ins in this time range. Try a longer one.</div>`;
+    return;
   }
-  svg += `</svg>`;
 
-  const legend = sliders
-    .map(
-      (s) =>
-        `<span style="display:inline-flex;align-items:center;gap:5px;margin-right:12px;font-size:11px;color:var(--text-dim);">
-          <span style="width:8px;height:8px;border-radius:50%;background:${themedColor(s)};display:inline-block;"></span>${s.label}
-        </span>`
-    )
-    .join("");
+  const ranked = [...withData].sort((a, b) => b.avg - a.avg);
+  const room = ranked.filter((r) => r.avg < STATUS_THRESHOLDS.yellow).reverse(); // lowest first
+  const good = ranked.filter((r) => r.avg >= STATUS_THRESHOLDS.green);
+  const overall = withData.reduce((sum, r) => sum + r.avg, 0) / withData.length;
 
-  chart.innerHTML = svg + `<div style="margin-top:10px;">${legend}</div>`;
+  body.innerHTML = `
+    ${callout("room", "Room to grow", room, (r) => `${r.slider.label} <span>${Math.round(100 - r.avg)} points below full</span>`,
+      `Nothing under ${STATUS_THRESHOLDS.yellow}% — every area is holding up.`)}
+    ${callout("good", "Going well", good, (r) => `${r.slider.label} <span>${Math.round(r.avg)}%</span>`,
+      `Nothing at ${STATUS_THRESHOLDS.green}% or above yet.`)}
+    <div class="section-title">All areas, best to lowest</div>
+    <div class="rank-list">
+      ${ranked.map(rankRow).join("")}
+      ${rows.filter((r) => r.avg == null).map(noDataRow).join("")}
+    </div>
+    <div class="overall-line">Overall average across areas: <b>${Math.round(overall)}%</b></div>
+  `;
+}
+
+function callout(kind, title, items, line, emptyText) {
+  return `
+    <div class="stats-callout ${kind}">
+      <div class="callout-title">${title}</div>
+      ${
+        items.length
+          ? items.map((r) => `<div class="callout-item"><div>${line(r)}</div></div>`).join("")
+          : `<div class="callout-empty">${emptyText}</div>`
+      }
+    </div>`;
+}
+
+function statusClass(avg) {
+  if (avg >= STATUS_THRESHOLDS.green) return "green";
+  if (avg >= STATUS_THRESHOLDS.yellow) return "yellow";
+  return "red";
+}
+
+function rankRow(r) {
+  const pct = Math.max(0, Math.min(100, r.avg));
+  return `
+    <div class="rank-row">
+      <div class="rank-label">${r.slider.label}</div>
+      <div class="rank-track"><div class="rank-fill" style="width:${pct}%;background:${r.color}"></div></div>
+      <div class="rank-value ${statusClass(r.avg)}">${Math.round(r.avg)}%</div>
+    </div>`;
+}
+
+function noDataRow(r) {
+  return `
+    <div class="rank-row">
+      <div class="rank-label">${r.slider.label}</div>
+      <div class="rank-track"></div>
+      <div class="rank-value dim">—</div>
+    </div>`;
 }

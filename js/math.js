@@ -166,17 +166,3 @@ export function fillMissingWithPeerAverage(avgMap) {
   }
   return filled;
 }
-
-export function trendArrow(current, previous) {
-  if (previous == null || current == null) return "flat";
-  const diff = current - previous;
-  if (Math.abs(diff) < 1) return "flat";
-  return diff > 0 ? "up" : "down";
-}
-
-export function statusColor(value, thresholds) {
-  if (value == null) return "neutral";
-  if (value >= thresholds.green) return "green";
-  if (value >= thresholds.yellow) return "yellow";
-  return "red";
-}

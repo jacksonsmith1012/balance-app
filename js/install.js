@@ -1,11 +1,4 @@
-import { auth, getMessaging, getToken, onMessage, messagingIsSupported } from "./firebase.js";
-import { saveUserDoc, state } from "./store.js";
 import { customSheet } from "./modal.js";
-
-// Set this to your Firebase Cloud Messaging "Web Push certificate" key
-// (Firebase Console > Project Settings > Cloud Messaging > Web configuration).
-export const VAPID_KEY =
-  "BIrRmRiK9XPpAICm1QPPCYaTQq_IQi8-sfYkoPz4IsuIPsTLfWXmoLAljI84Ft-rtBsoR29mE8ovsUps-adDtag";
 
 let deferredInstallPrompt = null;
 
@@ -26,43 +19,6 @@ function detectPlatform() {
   if (/iPad|iPhone|iPod/.test(ua)) return "ios";
   if (/Android/.test(ua)) return "android";
   return "desktop";
-}
-
-/** Requests notification permission and registers an FCM token for the user, best-effort. */
-export async function setupPushNotifications() {
-  try {
-    if (!("Notification" in window)) return false;
-    const supported = await messagingIsSupported().catch(() => false);
-    if (!supported) return false;
-
-    const permission = await Notification.requestPermission();
-    if (permission !== "granted") return false;
-
-    if (!VAPID_KEY) {
-      console.warn("VAPID_KEY not set in js/notifications.js — skipping FCM token registration.");
-      return false;
-    }
-
-    const registration = await navigator.serviceWorker.ready;
-    const messaging = getMessaging();
-    const token = await getToken(messaging, {
-      vapidKey: VAPID_KEY,
-      serviceWorkerRegistration: registration,
-    });
-
-    if (token && state.user) {
-      await saveUserDoc(state.user.uid, { fcmToken: token });
-    }
-
-    onMessage(messaging, (payload) => {
-      console.log("Foreground FCM message:", payload);
-    });
-
-    return true;
-  } catch (err) {
-    console.warn("Push notification setup failed (non-fatal):", err);
-    return false;
-  }
 }
 
 /**
@@ -95,7 +51,7 @@ export async function promptAddToHomeScreen(options = {}) {
         <div class="modal-title">Add Balance to your Home Screen</div>
         <div class="platform-instructions">${instructions}</div>
         <div class="modal-body" style="margin-top:12px;">
-          Required for notifications on iPhone. Gives you the full app experience.
+          Gives you the full app experience.
         </div>
         <div class="modal-actions" style="margin-top:16px;">
           <button class="btn btn-primary btn-block" id="doneBtn">Got it</button>

@@ -2,9 +2,9 @@ import { state, saveUserDoc, loadUserDoc, createUserDoc } from "./store.js";
 import { auth, googleProvider, signInWithPopup, signInWithRedirect } from "./firebase.js";
 import { SLIDER_CATALOG, MIN_SLIDERS, MAX_SLIDERS, getSliderMeta } from "./constants.js";
 import { createVerticalSlider } from "./slider-component.js";
-import { setupPushNotifications, promptAddToHomeScreen } from "./notifications.js";
+import { promptAddToHomeScreen } from "./install.js";
 
-const TOTAL_STEPS = 8;
+const TOTAL_STEPS = 7;
 
 export function renderOnboarding(container, { onComplete }) {
   const step = state.onboardingStep || 1;
@@ -41,9 +41,8 @@ export function renderOnboarding(container, { onComplete }) {
     3: renderName,
     4: renderChooseSliders,
     5: renderConfigureSliders,
-    6: renderNotifications,
-    7: renderAddToHomeScreen,
-    8: renderDone,
+    6: renderAddToHomeScreen,
+    7: renderDone,
   };
 
   (steps[step] || renderWelcome)(wrapper, { draft, next, back, container, onComplete });
@@ -323,45 +322,14 @@ function configBodyFor(meta, existing) {
   return `<p class="onb-body">We'll track your satisfaction with ${meta.label.toLowerCase()} from 0–100%.</p>`;
 }
 
-function renderNotifications(el, { draft, next, back }) {
-  el.innerHTML = `
-    <p class="eyebrow">Step 6 of ${TOTAL_STEPS}</p>
-    <h1 class="onb-title">Stay on track</h1>
-    <p class="onb-body">
-      We'll send a daily reminder to check in, plus weekly and monthly prompts to reflect on the bigger picture.
-    </p>
-    <div>
-      <label style="display:block;font-size:13px;color:var(--text-dim);margin-bottom:6px;">Daily reminder time</label>
-      <input class="time-input" type="time" id="timeInput" value="${draft.notificationTime || "21:00"}" />
-    </div>
-    <button class="btn btn-secondary btn-block" id="enableBtn">Enable notifications</button>
-    <div class="onb-footer">
-      <button class="btn btn-secondary" id="backBtn">Back</button>
-      <button class="btn btn-primary btn-block" id="continueBtn">Continue</button>
-    </div>
-  `;
-
-  el.querySelector("#backBtn").addEventListener("click", back);
-  el.querySelector("#enableBtn").addEventListener("click", async (e) => {
-    e.target.textContent = "Requesting…";
-    await setupPushNotifications();
-    e.target.textContent = "Notifications enabled ✓";
-    e.target.disabled = true;
-  });
-  el.querySelector("#continueBtn").addEventListener("click", () => {
-    draft.notificationTime = el.querySelector("#timeInput").value || "21:00";
-    next();
-  });
-}
-
 function renderAddToHomeScreen(el, { draft, next, back }) {
   let dismissed = false;
 
   el.innerHTML = `
-    <p class="eyebrow">Step 7 of ${TOTAL_STEPS}</p>
+    <p class="eyebrow">Step 6 of ${TOTAL_STEPS}</p>
     <h1 class="onb-title">Add Balance to your Home Screen</h1>
     <p class="onb-body">
-      Required for notifications on iPhone. Gives you the full app experience.
+      Gives you the full app experience.
     </p>
     <button class="btn btn-primary btn-block" id="addBtn">Add to Home Screen</button>
     <button class="btn btn-ghost btn-block" id="laterBtn">I'll do it later</button>
@@ -412,7 +380,6 @@ async function renderDone(el, { draft, container, onComplete }) {
     try {
       await saveUserDoc(state.user.uid, {
         name: draft.name,
-        notificationTime: draft.notificationTime || "21:00",
         addToHomeScreenDismissed: !!draft.addToHomeScreenDismissed,
         sliders,
         setupComplete: true,
